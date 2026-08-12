@@ -31,8 +31,7 @@ booking-app/
 cd backend
 python -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env          # fill in your own values
+pip install -e ".[dev]"
 uvicorn app.main:app --reload
 ```
 
