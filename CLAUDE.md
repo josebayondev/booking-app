@@ -1,7 +1,16 @@
-# booking-app
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project
 
 Appointment booking system. Monorepo: `backend/` (FastAPI + SQLAlchemy + Alembic) and
-`frontend/` (React + Vite + TypeScript).
+`frontend/` (React + Vite + TypeScript). Public booking has no login; the admin panel is
+authenticated. Backend deploys to Render, frontend to Vercel, database is Neon Postgres.
+
+`frontend/` is currently an empty placeholder (no scaffold yet). `backend/` has the app
+skeleton (`FastAPI` instance, `/health`, settings, Docker) but no SQLAlchemy models,
+Alembic setup, or CI pipeline yet — those land in later FEATs.
 
 ## Commands you must NOT run
 
@@ -19,10 +28,69 @@ You may read git state (`git status`, `git diff`, `git log`).
 When a change requires a migration, say so explicitly and describe what the migration
 should contain — then stop.
 
+## Backend commands
+
+Run from `backend/`:
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+uvicorn app.main:app --reload   # dev server: http://localhost:8000, docs at /docs
+ruff check .                    # lint
+ruff format .                   # format
+mypy app                        # type check (strict mode)
+pytest                          # tests (suite is empty so far — no tests/ directory yet)
+```
+
+## Frontend commands
+
+Run from `frontend/` once the scaffold exists:
+
+```bash
+npm install
+cp .env.example .env
+npm run dev
+```
+
+## Docker / local environment
+
+```bash
+docker compose up --build       # from repo root: backend + local postgres together
+docker build -t booking-backend ./backend   # backend image alone
+```
+
+Local Postgres credentials in `docker-compose.yml` (`postgres`/`postgres`/`booking_app`)
+are fixed dev-only values, not secrets — they never touch real data and don't apply to
+Neon (staging/production).
+
+## Architecture
+
+- **Settings**: `app/core/config.py` — a `pydantic-settings` `Settings` class, cached via
+  `get_settings()` (`lru_cache`), reads `.env`. Add new env-driven config here.
+- **Startup / DB check**: `app/main.py` registers a `lifespan` context manager that calls
+  `check_db_connection()` (`app/core/db.py`) — a minimal raw `psycopg` `SELECT 1`, no ORM.
+  This is a deliberate placeholder standing in for the real SQLAlchemy engine, session
+  factory and `get_db()` dependency, which are still to-do; expect `app/core/db.py` to be
+  replaced when that lands. Startup fails fast (raises) if the DB is unreachable.
+- **Routing**: routers live under `app/api/` (e.g. `health.py`) and are registered on the
+  `FastAPI` app in `main.py` via `app.include_router(...)`.
+- `app/models/` and `app/schemas/` are empty scaffolding for SQLAlchemy models and
+  Pydantic schemas respectively.
+- **Docker build**: `backend/Dockerfile` is a two-stage build — `builder` installs
+  dependencies into a venv at `/opt/venv` (via `pip install .`, cached separately from the
+  app source so dependency installs aren't invalidated by every code change); `runtime`
+  copies that venv plus the `app/` source copied directly from the build context, not from
+  whatever the builder stage installed as its own local package. Runs as a non-root user,
+  and honors `$PORT` (falling back to 8000) for Render, whose CMD uses shell form so the
+  env var expands.
+- `docker-compose.yml` (repo root) wires `backend` + `postgres` together for local dev
+  only — production uses Render + Neon instead, not this compose file.
+
 ## Conventions
 
 - Code, branch names and commit messages in **English**. UI text and emails in **Spanish**.
-- Conventional Commits: `feat:`, `fix:`, `chore:`, `docs:`, `test:`, `refactor:`
+- Conventional Commits: `feat:`, `fix:`, `chore:`, `docs:`, `test:`, `refactor:` — keep
+  commit messages to a single line.
 - Type hints everywhere in Python. Strict TypeScript in the frontend.
 
 ## Git workflow
