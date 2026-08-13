@@ -46,11 +46,15 @@ cp .env.example .env
 npm run dev
 ```
 
-### Local database
+### Local database + backend (Docker)
 
 ```bash
 docker compose up -d
 ```
+
+Starts Postgres and the backend together; the backend connects to Postgres on startup
+and fails fast if it can't. Useful as an alternative to running `uvicorn --reload` directly
+against the local Postgres started here.
 
 ## Database migrations
 

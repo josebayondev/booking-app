@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     environment: Literal["local", "preview", "production"] = "local"
     project_name: str = "Booking App API"
     cors_origins: list[str] = ["http://localhost:5173"]
+    database_url: str = "postgresql://postgres:postgres@localhost:5432/booking_app"
 
     @field_validator("cors_origins", mode="before")
     @classmethod

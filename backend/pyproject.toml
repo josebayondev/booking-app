@@ -6,6 +6,7 @@ dependencies = [
     "fastapi",
     "uvicorn[standard]",
     "pydantic-settings",
+    "psycopg[binary]",
 ]
 
 [project.optional-dependencies]
