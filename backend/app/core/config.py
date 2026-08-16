@@ -1,8 +1,8 @@
 from functools import lru_cache
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -10,7 +10,10 @@ class Settings(BaseSettings):
 
     environment: Literal["local", "preview", "production"] = "local"
     project_name: str = "Booking App API"
-    cors_origins: list[str] = ["http://localhost:5173"]
+    # NoDecode is required: without it pydantic-settings tries to JSON-decode the
+    # raw value before any validator runs, so a comma-separated CORS_ORIGINS
+    # raises SettingsError at startup and split_cors_origins never gets called.
+    cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:5173"]
     database_url: str = "postgresql://postgres:postgres@localhost:5432/booking_app"
 
     @field_validator("cors_origins", mode="before")
