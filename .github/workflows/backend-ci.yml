@@ -3,8 +3,6 @@ name: Backend CI
 on:
   pull_request:
     branches: [main]
-    paths:
-      - "backend/**"
 
 permissions:
   contents: read
@@ -18,8 +16,38 @@ defaults:
     working-directory: backend
 
 jobs:
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: .
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Detect backend changes
+        id: filter
+        run: |
+          if git diff --name-only \
+            "${{ github.event.pull_request.base.sha }}" \
+            "${{ github.event.pull_request.head.sha }}" \
+            | grep -q '^backend/'; then
+            echo "backend=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "backend=false" >> "$GITHUB_OUTPUT"
+          fi
+
   ruff:
     name: ruff
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -44,6 +72,7 @@ jobs:
   mypy:
     name: mypy
     needs: ruff
+    if: needs.ruff.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -68,6 +97,7 @@ jobs:
   pytest:
     name: pytest
     needs: mypy
+    if: needs.mypy.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     services:
@@ -108,6 +138,7 @@ jobs:
   docker-build:
     name: docker-build
     needs: pytest
+    if: needs.pytest.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
