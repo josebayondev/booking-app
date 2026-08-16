@@ -2,6 +2,12 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Communicating with Claude Code
+
+Always respond to the developer in **Spanish**, regardless of the language of his message.
+This is about chat responses only — it does not change the "Conventions" section below
+(code, branch names and commit messages stay in English).
+
 ## Project
 
 Appointment booking system. Monorepo: `backend/` (FastAPI + SQLAlchemy + Alembic) and
@@ -9,8 +15,9 @@ Appointment booking system. Monorepo: `backend/` (FastAPI + SQLAlchemy + Alembic
 authenticated. Backend deploys to Render, frontend to Vercel, database is Neon Postgres.
 
 `frontend/` is currently an empty placeholder (no scaffold yet). `backend/` has the app
-skeleton (`FastAPI` instance, `/health`, settings, Docker) but no SQLAlchemy models,
-Alembic setup, or CI pipeline yet — those land in later FEATs.
+skeleton (`FastAPI` instance, `/health`, settings, Docker) plus a CI workflow
+(`.github/workflows/backend-ci.yml`), but no SQLAlchemy models or Alembic setup yet —
+those land in later FEATs. There is no frontend CI yet either (FEAT 4.2).
 
 ## Commands you must NOT run
 
@@ -39,7 +46,7 @@ uvicorn app.main:app --reload   # dev server: http://localhost:8000, docs at /do
 ruff check .                    # lint
 ruff format .                   # format
 mypy app                        # type check (strict mode)
-pytest                          # tests (suite is empty so far — no tests/ directory yet)
+pytest                          # tests (backend/tests/ — one smoke test so far, /health)
 ```
 
 ## Frontend commands
