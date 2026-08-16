@@ -39,15 +39,30 @@ should contain — then stop.
 
 Run from `backend/`:
 
+Dependencies are managed with **uv**, and `uv.lock` is committed — it pins every
+transitive dependency, so local, CI and the Docker image all install identical versions.
+Install uv with `brew install uv` (or `pip install uv` inside the venv).
+
 ```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
-uvicorn app.main:app --reload   # dev server: http://localhost:8000, docs at /docs
-ruff check .                    # lint
-ruff format .                   # format
-mypy app                        # type check (strict mode)
-pytest                          # tests (backend/tests/ — one smoke test so far, /health)
+uv sync --extra dev             # create/update .venv from uv.lock (exact versions)
+uv run uvicorn app.main:app --reload   # dev server: http://localhost:8000, docs at /docs
+uv run ruff check .             # lint
+uv run ruff format .            # format
+uv run mypy app                 # type check (strict mode)
+uv run pytest                   # tests (backend/tests/ — one smoke test so far, /health)
 ```
+
+Changing dependencies — always commit the resulting `uv.lock` in the same PR:
+
+```bash
+uv add <package>                # add a runtime dependency (updates pyproject + lock)
+uv add --optional dev <package> # add a dev dependency
+uv lock --upgrade               # refresh every pin to the latest allowed version
+```
+
+Note that `uv sync` makes the venv match the lock exactly, so it removes anything not
+in it. CI and Docker use `uv sync --frozen`, which fails instead of re-resolving when
+`uv.lock` is out of sync with `pyproject.toml`.
 
 ## Frontend commands
 
@@ -83,13 +98,18 @@ Neon (staging/production).
   `FastAPI` app in `main.py` via `app.include_router(...)`.
 - `app/models/` and `app/schemas/` are empty scaffolding for SQLAlchemy models and
   Pydantic schemas respectively.
-- **Docker build**: `backend/Dockerfile` is a two-stage build — `builder` installs
-  dependencies into a venv at `/opt/venv` (via `pip install .`, cached separately from the
-  app source so dependency installs aren't invalidated by every code change); `runtime`
-  copies that venv plus the `app/` source copied directly from the build context, not from
-  whatever the builder stage installed as its own local package. Runs as a non-root user,
-  and honors `$PORT` (falling back to 8000) for Render, whose CMD uses shell form so the
-  env var expands.
+- **Docker build**: `backend/Dockerfile` is a two-stage build — `builder` installs the
+  locked dependencies into a venv at `/opt/venv` (via `uv sync --frozen
+  --no-install-project`, so only `pyproject.toml` + `uv.lock` are copied and dependency
+  installs aren't invalidated by every code change); `runtime` copies that venv plus the
+  `app/` source straight from the build context. The project itself is deliberately never
+  installed as a package — `app` is importable because it sits in the working directory.
+  Runs as a non-root user, and honors `$PORT` (falling back to 8000) for Render, whose CMD
+  uses shell form so the env var expands.
+- **Pinning**: both stages pin `python:3.13-slim` by digest, and the uv binary comes from
+  a digest-pinned `ghcr.io/astral-sh/uv` image — same reasoning as pinning GitHub Actions
+  by SHA. Dependabot (`.github/dependabot.yml`) keeps the lockfile, the image digests and
+  the action SHAs up to date.
 - `docker-compose.yml` (repo root) wires `backend` + `postgres` together for local dev
   only — production uses Render + Neon instead, not this compose file.
 
@@ -132,7 +152,8 @@ This is a **public repository**.
 
 ## Stack constraints
 
-- Backend: FastAPI, SQLAlchemy, Alembic, PostgreSQL. Ruff for lint and format, mypy for types.
+- Backend: FastAPI, SQLAlchemy, Alembic, PostgreSQL. Ruff for lint and format, mypy for
+  types, uv for dependency management (`uv.lock` is committed).
 - Frontend: React + Vite + TypeScript, Zustand (global state), TanStack Query (server state).
 - Tests: pytest (backend), Vitest (frontend). Business logic tests are written alongside
   the logic, not deferred to a later phase.
