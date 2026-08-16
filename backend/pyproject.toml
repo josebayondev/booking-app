@@ -1,20 +1,20 @@
 [project]
 name = "booking-app-backend"
 version = "0.1.0"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 dependencies = [
-    "fastapi",
-    "uvicorn[standard]",
-    "pydantic-settings",
-    "psycopg[binary]",
+    "fastapi>=0.141",
+    "uvicorn[standard]>=0.52",
+    "pydantic-settings>=2.15",
+    "psycopg[binary]>=3.3",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest",
-    "ruff",
-    "mypy",
-    "httpx",
+    "pytest>=9.1",
+    "ruff>=0.16",
+    "mypy>=2.3",
+    "httpx>=0.28",
 ]
 
 [build-system]
@@ -25,12 +25,12 @@ build-backend = "hatchling.build"
 packages = ["app"]
 
 [tool.ruff]
-target-version = "py312"
+target-version = "py313"
 line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.13"
 strict = true

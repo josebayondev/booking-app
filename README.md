@@ -12,6 +12,7 @@ Public booking without login (access via opaque token) and an admin panel behind
 | Backend   | FastAPI + SQLAlchemy + Alembic, Docker → Render   |
 | Database  | PostgreSQL (Neon)                                 |
 | CI        | GitHub Actions                                    |
+| Deps      | uv (`uv.lock`), Dependabot                        |
 | Errors    | Sentry                                            |
 
 ## Structure
@@ -27,15 +28,19 @@ booking-app/
 
 ### Backend
 
+Dependencies are managed with [uv](https://docs.astral.sh/uv/) (`brew install uv`).
+
 ```bash
 cd backend
-python -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
-uvicorn app.main:app --reload
+uv sync --extra dev
+uv run uvicorn app.main:app --reload
 ```
 
 API docs available at `http://localhost:8000/docs`.
+
+`uv.lock` is committed and pins every transitive dependency, so local, CI and the Docker
+image install byte-identical versions. Use `uv add <package>` to add one and
+`uv lock --upgrade` to refresh the pins — always commit the updated lockfile.
 
 ### Frontend
 
