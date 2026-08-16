@@ -6,7 +6,7 @@ dependencies = [
     "fastapi>=0.141",
     "uvicorn[standard]>=0.52",
     "pydantic-settings>=2.15",
-    "psycopg[binary]>=3.3",
+    "psycopg[binary]>=3.3.4",
 ]
 
 [project.optional-dependencies]

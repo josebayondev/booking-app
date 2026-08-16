@@ -124,7 +124,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.141" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.28" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=2.3" },
-    { name = "psycopg", extras = ["binary"], specifier = ">=3.3" },
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.3.4" },
     { name = "pydantic-settings", specifier = ">=2.15" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.1" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.16" },
