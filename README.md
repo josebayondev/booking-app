@@ -63,16 +63,18 @@ against the local Postgres started here.
 
 ## Database migrations
 
-Migrations are managed with Alembic. The migration file is committed and reviewed
-in the PR; it is applied automatically on deploy, never at application startup.
+Migrations are managed with Alembic (`backend/alembic/`, configured in
+`backend/app/core/db.py` and `backend/alembic/env.py`). Run these from `backend/`. The
+migration file is committed and reviewed in the PR; it is applied automatically on
+deploy, never at application startup.
 
 ```bash
-alembic revision --autogenerate -m "description"   # generate (always review the output)
-alembic upgrade head                               # apply
-alembic downgrade -1                               # roll back one revision
+uv run alembic revision --autogenerate -m "description"   # generate (always review the output)
+uv run alembic upgrade head                                # apply
+uv run alembic downgrade -1                                # roll back one revision
 ```
 
-Test migrations against a Neon branch before they reach production.
+Test migrations against a Neon branch (e.g. `dev`) before they reach production.
 
 ## Branching
 
