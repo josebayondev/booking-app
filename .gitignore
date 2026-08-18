@@ -68,3 +68,8 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
+
+# ==============================================================
+# Claude Code (overrides personales, nunca compartidos)
+# ==============================================================
+.claude/settings.local.json
