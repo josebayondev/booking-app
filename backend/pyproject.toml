@@ -7,6 +7,8 @@ dependencies = [
     "uvicorn[standard]>=0.52",
     "pydantic-settings>=2.15",
     "psycopg[binary]>=3.3",
+    "sqlalchemy>=2.0.52",
+    "alembic>=1.19.1",
 ]
 
 [project.optional-dependencies]
@@ -27,6 +29,7 @@ packages = ["app"]
 [tool.ruff]
 target-version = "py313"
 line-length = 100
+extend-exclude = ["alembic/versions"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
