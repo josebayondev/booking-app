@@ -89,11 +89,13 @@ Neon (staging/production).
 
 - **Settings**: `app/core/config.py` — a `pydantic-settings` `Settings` class, cached via
   `get_settings()` (`lru_cache`), reads `.env`. Add new env-driven config here.
-- **Startup / DB check**: `app/main.py` registers a `lifespan` context manager that calls
-  `check_db_connection()` (`app/core/db.py`) — a minimal raw `psycopg` `SELECT 1`, no ORM.
-  This is a deliberate placeholder standing in for the real SQLAlchemy engine, session
-  factory and `get_db()` dependency, which are still to-do; expect `app/core/db.py` to be
-  replaced when that lands. Startup fails fast (raises) if the DB is unreachable.
+- **Database**: `app/core/db.py` holds the SQLAlchemy `engine` (built from
+  `settings.database_url`, driver forced to `postgresql+psycopg` via `URL.set()`, with
+  `pool_pre_ping=True` since Neon suspends idle compute), the `SessionLocal` session
+  factory, and the `get_db()` generator dependency for use with FastAPI's `Depends()`.
+  `app/main.py` registers a `lifespan` context manager that calls `check_db_connection()`
+  (`app/core/db.py`) — `engine.connect()` + `SELECT 1`, no ORM session — at startup, and
+  fails fast (raises) if the DB is unreachable.
 - **Routing**: routers live under `app/api/` (e.g. `health.py`) and are registered on the
   `FastAPI` app in `main.py` via `app.include_router(...)`.
 - `app/models/` and `app/schemas/` are empty scaffolding for SQLAlchemy models and
