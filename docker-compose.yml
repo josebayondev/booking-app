@@ -1,14 +1,17 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: booking_app
     ports:
       - "5432:5432"
+    # Desde Postgres 18 las imágenes oficiales guardan los datos en un
+    # subdirectorio por versión mayor, así que el montaje va en
+    # /var/lib/postgresql y no en /var/lib/postgresql/data como hasta la 17.
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
