@@ -62,3 +62,19 @@ def test_logging_errors_are_reported_as_events(init_kwargs: list[dict[str, Any]]
     logging_integration = next(i for i in integrations if isinstance(i, LoggingIntegration))
 
     assert logging_integration._handler.level == logging.ERROR
+
+
+def test_invalid_dsn_does_not_kill_the_app(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """configure_sentry runs at import time: raising here would kill the container."""
+
+    def explode(**kwargs: Any) -> None:
+        raise ValueError("Unsupported scheme ''")
+
+    monkeypatch.setattr(sentry_sdk, "init", explode)
+
+    with caplog.at_level(logging.ERROR):
+        configure_sentry(IsolatedSettings(sentry_dsn="not-a-dsn"))
+
+    assert "Sentry init failed" in caplog.text
