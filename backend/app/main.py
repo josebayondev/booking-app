@@ -8,11 +8,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.health import router as health_router
 from app.core.config import get_settings
 from app.core.db import check_db_connection
+from app.core.observability import configure_sentry
 
 logging.basicConfig(level=logging.INFO)
 
 settings = get_settings()
 is_production = settings.environment == "production"
+
+# Before the app exists, so anything raised while wiring it up is reported too.
+configure_sentry(settings)
 
 
 @asynccontextmanager

@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     # raises SettingsError at startup and split_cors_origins never gets called.
     cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:5173"]
     database_url: str = "postgresql://postgres:postgres@localhost:5432/booking_app"
+    # Unset means "Sentry off": that is the default locally and in CI, and only
+    # the deployed environments define it.
+    sentry_dsn: str | None = None
 
     @field_validator("cors_origins", mode="before")
     @classmethod
