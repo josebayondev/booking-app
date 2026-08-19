@@ -9,6 +9,7 @@ dependencies = [
     "psycopg[binary]>=3.3",
     "sqlalchemy>=2.0.52",
     "alembic>=1.19.1",
+    "sentry-sdk>=2.68.0",
 ]
 
 [project.optional-dependencies]
