@@ -35,10 +35,13 @@ jobs:
       - name: Detect frontend changes
         id: filter
         run: |
+          # This workflow file counts as a frontend change on purpose: without it
+          # a PR that only edits the CI skips every job, so a broken pipeline
+          # ships unnoticed and only surfaces on the next PR touching frontend/.
           if git diff --name-only \
             "${{ github.event.pull_request.base.sha }}" \
             "${{ github.event.pull_request.head.sha }}" \
-            | grep -q '^frontend/'; then
+            | grep -qE '^frontend/|^\.github/workflows/frontend-ci\.yml'; then
             echo "frontend=true" >> "$GITHUB_OUTPUT"
           else
             echo "frontend=false" >> "$GITHUB_OUTPUT"

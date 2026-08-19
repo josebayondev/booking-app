@@ -97,10 +97,62 @@ jobs:
       - name: Run mypy
         run: uv run mypy app
 
-  pytest:
-    name: pytest
+  # Guards the gap between models and migrations: without this, adding a model
+  # or a column and forgetting to generate the migration passes CI, deploys to
+  # Render, and only fails in production against a table that does not exist.
+  migrations:
+    name: migrations
     needs: mypy
     if: needs.mypy.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: booking_app
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/booking_app
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.12.5"
+          enable-cache: true
+          cache-dependency-glob: "backend/uv.lock"
+
+      # No --extra dev: alembic is a runtime dependency and this job has no use
+      # for ruff, mypy or pytest.
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      # Replays every migration against an empty database, so a broken one is
+      # caught here instead of when migrate-production.yml hits Neon.
+      - name: Apply migrations from an empty database
+        run: uv run alembic upgrade head
+
+      # Compares Base.metadata against the schema the migrations just built.
+      - name: Fail if models drifted from migrations
+        run: uv run alembic check
+
+  pytest:
+    name: pytest
+    needs: migrations
+    if: needs.migrations.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     services:
