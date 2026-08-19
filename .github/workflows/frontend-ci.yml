@@ -35,10 +35,19 @@ jobs:
       - name: Detect frontend changes
         id: filter
         run: |
-          if git diff --name-only \
+          # Two conditions, both required.
+          #
+          # 1. package.json must exist. frontend/ is still an empty placeholder,
+          #    so npm ci and npm run lint have nothing to work with and the job
+          #    fails on setup-node before running anything. This guard drops out
+          #    on its own once the scaffold lands.
+          # 2. This workflow file counts as a frontend change on purpose:
+          #    otherwise a PR that only edits the CI skips every job, so a broken
+          #    pipeline ships unnoticed until the next PR touching frontend/.
+          if [ -f frontend/package.json ] && git diff --name-only \
             "${{ github.event.pull_request.base.sha }}" \
             "${{ github.event.pull_request.head.sha }}" \
-            | grep -q '^frontend/'; then
+            | grep -qE '^frontend/|^\.github/workflows/frontend-ci\.yml'; then
             echo "frontend=true" >> "$GITHUB_OUTPUT"
           else
             echo "frontend=false" >> "$GITHUB_OUTPUT"
