@@ -25,6 +25,7 @@ services:
       - "8000:8000"
     environment:
       ENVIRONMENT: local
+      CORS_ORIGINS: http://localhost:5173
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/booking_app
     depends_on:
       postgres:

@@ -98,6 +98,17 @@ Neon (staging/production).
   fails fast (raises) if the DB is unreachable.
 - **Routing**: routers live under `app/api/` (e.g. `health.py`) and are registered on the
   `FastAPI` app in `main.py` via `app.include_router(...)`.
+- **Security headers**: `app/core/security_headers.py` holds `SecurityHeadersMiddleware`, a
+  pure ASGI middleware (not `BaseHTTPMiddleware`) that stamps `X-Content-Type-Options`,
+  `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` and a CSP onto every response.
+  The CSP is `default-src 'none'` everywhere — this API only returns JSON — except on
+  `/docs`, `/docs/oauth2-redirect` and `/redoc`, which get a relaxed policy so Swagger UI
+  and ReDoc still load their CDN assets. `Strict-Transport-Security` is sent whenever
+  `environment != "local"`: Render terminates TLS and speaks HTTP to the container, so the
+  request scheme cannot be used to decide, and sending HSTS over `http://localhost` would
+  poison the browser's HSTS cache for every other local project. It is registered **last**
+  in `main.py`, which makes it the outermost middleware, so CORS preflight responses —
+  which `CORSMiddleware` answers without reaching the router — carry the headers too.
 - `app/models/` and `app/schemas/` are empty scaffolding for SQLAlchemy models and
   Pydantic schemas respectively.
 - **Docker build**: `backend/Dockerfile` is a two-stage build — `builder` installs the
@@ -148,6 +159,9 @@ This is a **public repository**.
 - Never commit secrets. All configuration through environment variables.
   `.env` is gitignored; `.env.example` is committed with placeholder values.
 - CORS: explicit origin allow-list per environment. Never `*` combined with credentials.
+  `Settings.cors_origins` defaults to an empty list, so an environment that forgets
+  `CORS_ORIGINS` allows nothing instead of falling back to a developer's localhost.
+  Local setups declare it in `.env` / `docker-compose.yml`.
 - Sentry: `send_default_pii=False`, scrub sensitive fields.
 - Rate limiting on public endpoints (booking creation).
 - Security headers: HSTS, X-Content-Type-Options, X-Frame-Options, basic CSP.
