@@ -39,3 +39,12 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 [tool.mypy]
 python_version = "3.13"
 strict = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# --strict-markers turns a mistyped marker into an error instead of a warning nobody
+# reads, which is exactly the failure mode that makes a marker useless.
+addopts = "-ra --strict-markers --strict-config"
+markers = [
+    "db: needs a reachable PostgreSQL (docker compose up -d postgres)",
+]
