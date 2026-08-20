@@ -13,7 +13,10 @@ class Settings(BaseSettings):
     # NoDecode is required: without it pydantic-settings tries to JSON-decode the
     # raw value before any validator runs, so a comma-separated CORS_ORIGINS
     # raises SettingsError at startup and split_cors_origins never gets called.
-    cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:5173"]
+    # Defaults to no origins at all: a deployment that forgets CORS_ORIGINS must
+    # fail closed, not silently allow a developer's localhost. Local setups get the
+    # origin from .env.example or docker-compose.yml, where it is spelled out.
+    cors_origins: Annotated[list[str], NoDecode] = []
     database_url: str = "postgresql://postgres:postgres@localhost:5432/booking_app"
     # Unset means "Sentry off": that is the default locally and in CI, and only
     # the deployed environments define it.

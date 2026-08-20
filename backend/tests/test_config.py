@@ -25,8 +25,9 @@ def _clear_cors_origins(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("CORS_ORIGINS", raising=False)
 
 
-def test_cors_origins_defaults_to_local_frontend() -> None:
-    assert IsolatedSettings().cors_origins == ["http://localhost:5173"]
+def test_cors_origins_defaults_to_empty() -> None:
+    """Fail closed: forgetting CORS_ORIGINS must allow nothing, not localhost."""
+    assert IsolatedSettings().cors_origins == []
 
 
 @pytest.mark.parametrize(

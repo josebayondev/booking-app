@@ -159,6 +159,9 @@ This is a **public repository**.
 - Never commit secrets. All configuration through environment variables.
   `.env` is gitignored; `.env.example` is committed with placeholder values.
 - CORS: explicit origin allow-list per environment. Never `*` combined with credentials.
+  `Settings.cors_origins` defaults to an empty list, so an environment that forgets
+  `CORS_ORIGINS` allows nothing instead of falling back to a developer's localhost.
+  Local setups declare it in `.env` / `docker-compose.yml`.
 - Sentry: `send_default_pii=False`, scrub sensitive fields.
 - Rate limiting on public endpoints (booking creation).
 - Security headers: HSTS, X-Content-Type-Options, X-Frame-Options, basic CSP.
