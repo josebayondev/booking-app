@@ -5,6 +5,10 @@ from sqlalchemy.exc import OperationalError
 
 from app.core import db
 
+# Not purely a unit test: the happy path of the retry test lets the second attempt
+# reach the real engine.connect().
+pytestmark = pytest.mark.db
+
 
 @pytest.fixture(autouse=True)
 def _no_sleeping(monkeypatch: pytest.MonkeyPatch) -> None:

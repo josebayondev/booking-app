@@ -3,6 +3,8 @@ from sqlalchemy import text
 
 from app.core.db import check_db_connection, engine, get_db
 
+pytestmark = pytest.mark.db
+
 
 def test_check_db_connection_succeeds() -> None:
     check_db_connection()

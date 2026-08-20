@@ -17,6 +17,7 @@ from app.core.security_headers import (
     SecurityHeadersMiddleware,
 )
 from app.main import app as real_app
+from tests.conftest import TEST_CORS_ORIGIN
 
 
 async def _ok(request: Request) -> JSONResponse:
@@ -124,20 +125,17 @@ def test_real_app_sends_the_headers() -> None:
 
 def test_cors_preflight_also_carries_the_headers() -> None:
     """CORSMiddleware answers preflights itself, without ever reaching the router, so
-    these headers appear only if the security middleware sits outside it.
-
-    The CORS verdict is deliberately not asserted: it depends on CORS_ORIGINS, which
-    is empty in CI and set locally. A rejected preflight is still a response that
-    CORSMiddleware produced on its own, so it proves exactly the same point.
-    """
+    these headers appear only if the security middleware sits outside it."""
     response = TestClient(real_app).options(
         "/health",
         headers={
-            "Origin": "http://localhost:5173",
+            "Origin": TEST_CORS_ORIGIN,
             "Access-Control-Request-Method": "GET",
         },
     )
 
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == TEST_CORS_ORIGIN
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.headers["content-security-policy"] == STRICT_CSP
 

@@ -49,7 +49,8 @@ uv run uvicorn app.main:app --reload   # dev server: http://localhost:8000, docs
 uv run ruff check .             # lint
 uv run ruff format .            # format
 uv run mypy app                 # type check (strict mode)
-uv run pytest                   # tests (backend/tests/ — one smoke test so far, /health)
+uv run pytest                   # tests (needs Postgres: docker compose up -d postgres)
+uv run pytest -m "not db"       # the subset that needs no database
 uv run pip-audit                # audit locked deps against the PyPI advisory database
 ```
 
@@ -89,7 +90,11 @@ Neon (staging/production).
 ## Architecture
 
 - **Settings**: `app/core/config.py` — a `pydantic-settings` `Settings` class, cached via
-  `get_settings()` (`lru_cache`), reads `.env`. Add new env-driven config here.
+  `get_settings()` (`lru_cache`), reads `.env`. Add new env-driven config here. Which file
+  it reads comes from `ENV_FILE` (default `.env`); setting it to an empty string means
+  "read no file", which is how the test suite opts out — see the Testing bullet below.
+  `ENV_FILE` is deliberately **not** in `.env.example`: it is the variable that chooses
+  that file.
 - **Database**: `app/core/db.py` holds the SQLAlchemy `engine` (built from
   `settings.database_url`, driver forced to `postgresql+psycopg` via `URL.set()`, with
   `pool_pre_ping=True` since Neon suspends idle compute), the `SessionLocal` session
@@ -112,6 +117,20 @@ Neon (staging/production).
   which `CORSMiddleware` answers without reaching the router — carry the headers too.
 - `app/models/` and `app/schemas/` are empty scaffolding for SQLAlchemy models and
   Pydantic schemas respectively.
+- **Testing**: `backend/tests/conftest.py` isolates the suite from the environment before
+  anything imports `app.*` — it empties `ENV_FILE`, defaults `DATABASE_URL` to the
+  docker-compose Postgres (via `setdefault`, so CI's own value still wins), pins
+  `CORS_ORIGINS` to `TEST_CORS_ORIGIN`, and forces `SENTRY_DSN` empty so a test run can
+  never reach the real Sentry project. The ordering is load-bearing: `app/core/db.py` and
+  `app/main.py` call `get_settings()` at import time and `lru_cache` freezes the result,
+  so no fixture can correct it afterwards — which is why nothing in `conftest.py` imports
+  `app.*` at module level. Without it, `uv run pytest` picks up `backend/.env` and runs
+  against the Neon dev branch. Fixtures: `db_session` (a session inside a transaction that
+  is rolled back afterwards, so even a `commit()` in the test is undone),
+  `client`/`running_client` (the real app without/with its lifespan, i.e. without/with a
+  database connection) and `clean_env`. Tests needing a live database carry
+  `@pytest.mark.db`. Note `alembic/env.py` still reads `.env` on purpose: you do want
+  `alembic upgrade head` to migrate the database you have configured.
 - **Docker build**: `backend/Dockerfile` is a two-stage build — `builder` installs the
   locked dependencies into a venv at `/opt/venv` (via `uv sync --frozen
   --no-install-project`, so only `pyproject.toml` + `uv.lock` are copied and dependency
