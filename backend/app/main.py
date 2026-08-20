@@ -9,6 +9,7 @@ from app.api.health import router as health_router
 from app.core.config import get_settings
 from app.core.db import check_db_connection
 from app.core.observability import configure_sentry
+from app.core.security_headers import SecurityHeadersMiddleware
 
 logging.basicConfig(level=logging.INFO)
 
@@ -40,5 +41,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Added last so it wraps CORSMiddleware: preflight responses are answered by CORS
+# itself and would otherwise go out without any security header. HSTS is keyed off
+# the environment rather than the request scheme because Render terminates TLS and
+# talks plain HTTP to the container, and because sending HSTS over http://localhost
+# would poison the browser's HSTS cache for every other local project.
+app.add_middleware(SecurityHeadersMiddleware, hsts=settings.environment != "local")
 
 app.include_router(health_router)
