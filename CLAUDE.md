@@ -173,7 +173,12 @@ This is a **public repository**.
   `Settings.cors_origins` defaults to an empty list, so an environment that forgets
   `CORS_ORIGINS` allows nothing instead of falling back to a developer's localhost.
   Local setups declare it in `.env` / `docker-compose.yml`.
-- Sentry: `send_default_pii=False`, scrub sensitive fields.
+- Sentry: `send_default_pii=False`, plus a `before_send` hook — `scrub_event` in
+  `app/core/observability.py` — that walks the whole event redacting values under
+  sensitive key names and any email or Spanish phone number found in free text.
+  `send_default_pii=False` only stops Sentry from collecting PII itself; it does nothing
+  about PII the app hands it in a log message or a captured local variable, which is
+  where it realistically leaks. Events are always scrubbed, never dropped.
 - Rate limiting on public endpoints (booking creation).
 - Security headers: HSTS, X-Content-Type-Options, X-Frame-Options, basic CSP.
 
