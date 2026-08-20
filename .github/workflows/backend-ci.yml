@@ -204,3 +204,37 @@ jobs:
 
       - name: Build Docker image
         run: docker build -t booking-backend:ci .
+
+  # Checks the locked dependencies against the PyPI advisory database. Dependabot
+  # (.github/dependabot.yml) proposes upgrades weekly with a 7-day cooldown; this
+  # job is what stops an advisory from being ignored while that cadence catches up.
+  #
+  # It runs last on purpose: a new CVE can be published against an untouched
+  # lockfile, so this job can go red for reasons that have nothing to do with the
+  # PR. Putting it after the rest means that never delays lint or test feedback.
+  pip-audit:
+    name: pip-audit
+    needs: docker-build
+    if: needs.docker-build.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.12.5"
+          enable-cache: true
+          cache-dependency-glob: "backend/uv.lock"
+
+      # --extra dev on purpose. The dev tools never reach the image, but they do
+      # execute here in CI, so a compromised one still matters.
+      - name: Install dependencies
+        run: uv sync --frozen --extra dev
+
+      - name: Audit dependencies
+        run: uv run pip-audit --progress-spinner off

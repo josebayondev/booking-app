@@ -127,3 +127,32 @@ jobs:
 
       - name: Run build
         run: npm run build
+
+  # The npm half of dependency scanning. Dormant today: like every job here it
+  # hangs off the `changes` guard, which stays false while frontend/package.json
+  # does not exist, so this starts running on its own the day the scaffold lands.
+  #
+  # --audit-level=high keeps the gate on what is actually actionable; the npm
+  # ecosystem produces a constant stream of low/moderate advisories in dev-only
+  # tooling. If that ever gets noisy anyway, --omit=dev is the next lever.
+  audit:
+    name: audit
+    needs: build
+    if: needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+
+      # No npm ci: npm audit resolves straight from package-lock.json, so
+      # installing node_modules first would only make the job slower.
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
