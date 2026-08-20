@@ -47,7 +47,27 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen
 
+      # A repository generated from this template has no such secret, and its very
+      # first commit touches backend/alembic/**, so this workflow fires and alembic
+      # dies with "Could not parse SQLAlchemy URL from given URL string". There is
+      # nothing to migrate without a database: say so and finish green.
+      #
+      # The check lives in a step rather than in the job's `if:` because the secrets
+      # context is not available at job level.
+      - name: Check for the production database secret
+        id: guard
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_PRODUCTION }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::notice::DATABASE_URL_PRODUCTION is not set, skipping migrations."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Show pending migrations
+        if: steps.guard.outputs.configured == 'true'
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL_PRODUCTION }}
         run: |
@@ -57,6 +77,7 @@ jobs:
           uv run alembic heads
 
       - name: Apply migrations
+        if: steps.guard.outputs.configured == 'true'
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL_PRODUCTION }}
         run: uv run alembic upgrade head

@@ -161,6 +161,11 @@ Neon (staging/production).
 
 ## Architecture decisions
 
+This repository doubles as a **GitHub template** for future apps, so `TEMPLATE.md` (the
+"what to fill in when you clone" checklist) has to be updated whenever the infrastructure
+changes — a renamed service, a new required status check, a new environment variable. It is
+the kind of document that rots silently, because nothing fails when it goes stale.
+
 Do not propose or add infrastructure beyond this without being asked:
 
 - **No** Redis, message broker, Kubernetes, service workers, or microservices.
