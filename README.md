@@ -4,10 +4,6 @@ Appointment booking system — FastAPI, React, PostgreSQL.
 
 Public booking without login (access via opaque token) and an admin panel behind authentication.
 
-> **Starting a new project from this template?** Read [TEMPLATE.md](TEMPLATE.md) first — it
-> lists what to rename, which services to create, and the GitHub settings a template does not
-> carry over.
-
 ## Stack
 
 | Layer     | Tech                                              |
