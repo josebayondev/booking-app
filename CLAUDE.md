@@ -158,6 +158,11 @@ This is a **public repository**.
 
 - Never commit secrets. All configuration through environment variables.
   `.env` is gitignored; `.env.example` is committed with placeholder values.
+- Secret scanning: `gitleaks` runs on every PR (`.github/workflows/secret-scan.yml`) over
+  the **full** git history, so a secret that ever landed keeps failing CI until it is
+  purged from history — not just removed in a later commit. It runs the MIT CLI from a
+  digest-pinned image instead of `gitleaks-action`, which requires a paid licence for
+  org-owned repositories. Dependabot does not track that digest; bump it by hand.
 - CORS: explicit origin allow-list per environment. Never `*` combined with credentials.
   `Settings.cors_origins` defaults to an empty list, so an environment that forgets
   `CORS_ORIGINS` allows nothing instead of falling back to a developer's localhost.
