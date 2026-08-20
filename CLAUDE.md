@@ -50,6 +50,7 @@ uv run ruff check .             # lint
 uv run ruff format .            # format
 uv run mypy app                 # type check (strict mode)
 uv run pytest                   # tests (backend/tests/ — one smoke test so far, /health)
+uv run pip-audit                # audit locked deps against the PyPI advisory database
 ```
 
 Changing dependencies — always commit the resulting `uv.lock` in the same PR:
@@ -163,6 +164,11 @@ This is a **public repository**.
   purged from history — not just removed in a later commit. It runs the MIT CLI from a
   digest-pinned image instead of `gitleaks-action`, which requires a paid licence for
   org-owned repositories. Dependabot does not track that digest; bump it by hand.
+- Dependency scanning: `pip-audit` gates every backend PR and `npm audit
+  --audit-level=high` every frontend PR. Dependabot proposes the upgrades; these jobs
+  are what stop an advisory from being ignored while that weekly cadence catches up.
+  The npm one is dormant until `frontend/package.json` exists — see the `changes` guard
+  in `frontend-ci.yml`.
 - CORS: explicit origin allow-list per environment. Never `*` combined with credentials.
   `Settings.cors_origins` defaults to an empty list, so an environment that forgets
   `CORS_ORIGINS` allows nothing instead of falling back to a developer's localhost.
