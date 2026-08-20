@@ -164,6 +164,11 @@ This is a **public repository**.
   purged from history — not just removed in a later commit. It runs the MIT CLI from a
   digest-pinned image instead of `gitleaks-action`, which requires a paid licence for
   org-owned repositories. Dependabot does not track that digest; bump it by hand.
+- SAST: CodeQL analyses the Python source on every PR, on pushes to `main` and weekly
+  (`.github/workflows/codeql.yml`), publishing to the Security tab. Deliberately the
+  *advanced* setup — a committed workflow — and not the one-click default setup, which
+  lives in repository settings and so would not be inherited by an app generated from
+  this template. Never enable both: they conflict.
 - Dependency scanning: `pip-audit` gates every backend PR and `npm audit
   --audit-level=high` every frontend PR. Dependabot proposes the upgrades; these jobs
   are what stop an advisory from being ignored while that weekly cadence catches up.
