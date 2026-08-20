@@ -1,6 +1,7 @@
 import re
 
 import pytest
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
 from fastapi.testclient import TestClient
 from starlette.applications import Starlette
@@ -122,8 +123,13 @@ def test_real_app_sends_the_headers() -> None:
 
 
 def test_cors_preflight_also_carries_the_headers() -> None:
-    """CORSMiddleware answers preflights on its own, so this is what proves the
-    security middleware is registered outside it."""
+    """CORSMiddleware answers preflights itself, without ever reaching the router, so
+    these headers appear only if the security middleware sits outside it.
+
+    The CORS verdict is deliberately not asserted: it depends on CORS_ORIGINS, which
+    is empty in CI and set locally. A rejected preflight is still a response that
+    CORSMiddleware produced on its own, so it proves exactly the same point.
+    """
     response = TestClient(real_app).options(
         "/health",
         headers={
@@ -132,7 +138,32 @@ def test_cors_preflight_also_carries_the_headers() -> None:
         },
     )
 
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["content-security-policy"] == STRICT_CSP
+
+
+def test_allowed_preflight_keeps_both_cors_and_security_headers() -> None:
+    """The accepted-origin half of the same property, wired like main.py does it:
+    CORS added first, security added last so it ends up outermost. Built here with
+    an explicit origin so the result does not depend on the ambient CORS_ORIGINS.
+    """
+    origin = "https://front.example"
+    inner = Starlette(routes=[Route("/thing", _ok)])
+    inner.add_middleware(
+        CORSMiddleware,
+        allow_origins=[origin],
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    inner.add_middleware(SecurityHeadersMiddleware, hsts=False)
+
+    response = TestClient(inner).options(
+        "/thing",
+        headers={"Origin": origin, "Access-Control-Request-Method": "GET"},
+    )
+
     assert response.status_code == 200
-    assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
+    assert response.headers["access-control-allow-origin"] == origin
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.headers["content-security-policy"] == STRICT_CSP
