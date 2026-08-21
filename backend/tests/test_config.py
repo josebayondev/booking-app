@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 from pydantic_settings import SettingsConfigDict
 
 from app.core.config import Settings
@@ -59,3 +60,16 @@ def test_env_example_loads() -> None:
 
     assert settings.cors_origins == ["http://localhost:5173"]
     assert settings.environment == "local"
+    assert settings.booking_timezone == "Europe/Madrid"
+
+
+def test_booking_timezone_defaults_to_madrid() -> None:
+    assert IsolatedSettings().booking_timezone == "Europe/Madrid"
+
+
+def test_invalid_booking_timezone_fails_at_startup(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A typo here would otherwise sit dormant until the first booking was read."""
+    monkeypatch.setenv("BOOKING_TIMEZONE", "Mars/Olympus")
+
+    with pytest.raises(ValidationError):
+        IsolatedSettings()
