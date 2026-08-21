@@ -1,3 +1,10 @@
+"""Aislamiento del entorno y fixtures compartidos por toda la suite.
+
+Este fichero hace dos cosas: cortar cualquier vía por la que los tests pudieran acabar
+hablando con la base de datos o el Sentry de verdad, y ofrecer las fixtures comunes
+(sesión transaccional, cliente HTTP con y sin lifespan, entorno limpio).
+"""
+
 import os
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -7,32 +14,34 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 # --------------------------------------------------------------------------------------
-# Environment isolation. This block runs when pytest loads this conftest, which is before
-# it imports any tests/test_*.py -- and that ordering is the whole point. app/core/db.py
-# and app/main.py both call get_settings() at import time, and lru_cache freezes the
-# result for the rest of the session, so no fixture can correct it afterwards. Nothing in
-# this module may import app.* at module level; the fixtures below import it lazily.
+# Aislamiento del entorno. Este bloque corre cuando pytest carga este conftest, o sea antes
+# de que importe ningún tests/test_*.py -- y ese orden es justo el motivo de que exista.
+# app/core/db.py y app/main.py llaman a get_settings() en tiempo de import, y lru_cache
+# congela el resultado para el resto de la sesión, así que ninguna fixture puede
+# corregirlo después. Nada de este módulo puede importar app.* a nivel de módulo; las
+# fixtures de abajo lo importan de forma perezosa.
 #
-# Without this, `uv run pytest` reads backend/.env, which names the Neon dev branch, and
-# the database tests open real connections to it.
+# Sin esto, `uv run pytest` lee backend/.env, que apunta a la rama de desarrollo de Neon, y
+# los tests de base de datos abren conexiones reales contra ella.
 # --------------------------------------------------------------------------------------
 
 os.environ["ENV_FILE"] = ""
 
-# The same database the postgres service in docker-compose.yml serves, and the same one
-# the CI jobs point at. setdefault rather than a hard assignment so CI's own DATABASE_URL
-# still wins, and so a developer can aim the suite elsewhere without editing anything.
+# La misma base de datos que sirve el servicio postgres de docker-compose.yml, y la misma a
+# la que apuntan los jobs de CI. setdefault en vez de una asignación dura para que gane el
+# DATABASE_URL propio de CI, y para que un desarrollador pueda apuntar la suite a otro sitio
+# sin editar nada.
 TEST_DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/booking_app"
 os.environ.setdefault("DATABASE_URL", TEST_DATABASE_URL)
 
-# Pinned rather than left at the empty default so the CORS tests can assert an accepted
-# preflight, not merely a rejected one. Deliberately not a real front-end origin: nothing
-# outside the suite should recognise it.
+# Fijado en vez de dejarlo en el valor vacío por defecto para que los tests de CORS puedan
+# comprobar un preflight aceptado, y no solo uno rechazado. A propósito no es un origen real
+# del frontend: nada fuera de la suite debería reconocerlo.
 TEST_CORS_ORIGIN = "http://front.test"
 os.environ["CORS_ORIGINS"] = TEST_CORS_ORIGIN
 
-# Not setdefault: there is no legitimate reason for the suite to reach the real Sentry
-# project, and an exported SENTRY_DSN would otherwise send test noise to production.
+# Aquí no vale setdefault: no hay ninguna razón legítima para que la suite llegue al
+# proyecto real de Sentry, y un SENTRY_DSN exportado mandaría ruido de tests a producción.
 os.environ["SENTRY_DSN"] = ""
 
 SETTINGS_ENV_VARS = (
@@ -47,15 +56,15 @@ SETTINGS_ENV_VARS = (
 
 @contextmanager
 def transactional_session() -> Iterator[Session]:
-    """A session whose writes never outlive the block, so tests cannot leak into
-    each other.
+    """Una sesión cuyas escrituras no sobreviven al bloque, para que un test no pueda
+    contaminar a otro.
 
-    join_transaction_mode="create_savepoint" is what makes this hold even when the test
-    calls commit(): the session commits into a savepoint nested inside the outer
-    transaction, and rolling that transaction back discards everything.
+    join_transaction_mode="create_savepoint" es lo que hace que esto se cumpla incluso
+    cuando el test llama a commit(): la sesión hace commit contra un savepoint anidado
+    dentro de la transacción externa, y deshacer esa transacción lo descarta todo.
 
-    Exposed as a context manager and not only as the db_session fixture so a test can
-    watch it tear down and check the rollback from outside.
+    Se expone como context manager y no solo como la fixture db_session para que un test
+    pueda verlo desmontarse y comprobar el rollback desde fuera.
     """
     from app.core.db import SessionLocal, engine
 
@@ -72,22 +81,23 @@ def transactional_session() -> Iterator[Session]:
 
 @pytest.fixture(scope="session")
 def _migrated_schema() -> None:
-    """Turn "you forgot to migrate" into one sentence instead of a page of traceback.
+    """Convierte el "se te ha olvidado migrar" en una frase en vez de una página de traza.
 
-    A db-marked test hitting a table that does not exist fails deep inside psycopg with
-    UndefinedTable, repeated once per test, which buries the one thing worth knowing.
-    Checking the model tables against the database up front says it once, and says what
-    to run about it.
+    Un test marcado con db que toca una tabla inexistente falla en las profundidades de
+    psycopg con UndefinedTable, una vez por test, lo que entierra lo único que importa
+    saber. Comprobar por adelantado las tablas de los modelos contra la base de datos lo
+    dice una sola vez, y dice además qué hacer al respecto.
 
-    Compared against Base.metadata rather than against alembic's revision history on
-    purpose: what these tests need is the tables, and that stays true whether the schema
-    is behind, was rolled back, or was pointed at the wrong database entirely.
+    Se compara contra Base.metadata y no contra el historial de revisiones de alembic a
+    propósito: lo que estos tests necesitan son las tablas, y eso sigue siendo cierto tanto
+    si el esquema está atrasado, como si se revirtió, como si se apuntó a otra base de datos.
 
-    The message names the host and database because "run alembic upgrade head" is not by
-    itself enough to act on: alembic/env.py reads backend/.env, while the block at the
-    top of this file pins the suite to local Postgres. Those are routinely two different
-    databases, so a plain `alembic upgrade head` can migrate the Neon branch and leave
-    these tests failing against localhost with no hint that anything moved at all.
+    El mensaje nombra el host y la base de datos porque "ejecuta alembic upgrade head" no
+    basta por sí solo para actuar: alembic/env.py lee backend/.env, mientras que el bloque
+    del principio de este fichero fija la suite contra el Postgres local. Rutinariamente son
+    dos bases de datos distintas, así que un `alembic upgrade head` a secas puede migrar la
+    rama de Neon y dejar estos tests fallando contra localhost sin pista de que se haya
+    movido nada.
     """
     from sqlalchemy import inspect
 
@@ -96,11 +106,12 @@ def _migrated_schema() -> None:
 
     missing = sorted(set(Base.metadata.tables) - set(inspect(engine).get_table_names()))
     if missing:
-        # Host and database only. The password is never interpolated into the message.
-        target = f"{engine.url.database} at {engine.url.host}"
+        # Solo host y base de datos. La contraseña no se interpola nunca en el mensaje.
+        target = f"{engine.url.database} en {engine.url.host}"
         pytest.fail(
-            f"{target} has no {', '.join(missing)}. Alembic follows backend/.env, which "
-            f"may be a different database, so migrate this one explicitly:\n"
+            f"A {target} le faltan estas tablas: {', '.join(missing)}. Alembic sigue "
+            f"backend/.env, que puede ser otra base de datos, así que migra esta de forma "
+            f"explícita:\n"
             f"  DATABASE_URL={TEST_DATABASE_URL} uv run alembic upgrade head",
             pytrace=False,
         )
@@ -108,22 +119,22 @@ def _migrated_schema() -> None:
 
 @pytest.fixture
 def db_session(_migrated_schema: None) -> Iterator[Session]:
-    """A session on genuinely empty tables. Mark the test with @pytest.mark.db.
+    """Una sesión sobre tablas realmente vacías. Marca el test con @pytest.mark.db.
 
-    The emptying is not redundant with the rollback. The rollback undoes what the *test*
-    writes; this undoes what was already committed before pytest started -- and locally
-    that is not hypothetical, because `python -m app.seed` is a normal thing to run
-    against the development database, and it commits eleven rows.
+    El vaciado no es redundante con el rollback. El rollback deshace lo que escribe el
+    *test*; esto deshace lo que ya estaba confirmado antes de que arrancase pytest -- y en
+    local eso no es hipotético, porque `python -m app.seed` es algo normal de ejecutar
+    contra la base de datos de desarrollo, y confirma once filas.
 
-    Without this, using the application breaks the suite: a test asserting `.one()` finds
-    the seeded row alongside its own, and one asserting a unique constraint passes for
-    the wrong reason, colliding with seeded data instead of with the row it created. CI
-    gets a fresh Postgres every run and would stay green throughout, which is the worst
-    version of the problem.
+    Sin esto, usar la aplicación rompe la suite: un test que comprueba `.one()` encuentra la
+    fila sembrada junto a la suya, y uno que comprueba una restricción única pasa por el
+    motivo equivocado, chocando con datos sembrados en vez de con la fila que él creó. CI
+    levanta un Postgres nuevo en cada ejecución y se quedaría en verde todo el rato, que es
+    la peor versión del problema.
 
-    The DELETEs run inside the fixture's transaction, so the developer's committed rows
-    are back the moment it rolls back. Reversed order for the foreign keys that arrive
-    with `booking`.
+    Los DELETE corren dentro de la transacción de la fixture, así que las filas confirmadas
+    del desarrollador vuelven en cuanto se hace el rollback. Orden invertido por las claves
+    ajenas que llegarán con `booking`.
     """
     from app.models import Base
 
@@ -135,10 +146,10 @@ def db_session(_migrated_schema: None) -> Iterator[Session]:
 
 @pytest.fixture
 def client() -> TestClient:
-    """The real app without its lifespan, so no database connection is opened.
+    """La app real sin su lifespan, así que no se abre ninguna conexión a base de datos.
 
-    TestClient only runs the lifespan inside a `with` block, and this fixture
-    deliberately does not use one.
+    TestClient solo ejecuta el lifespan dentro de un bloque `with`, y esta fixture
+    deliberadamente no usa ninguno.
     """
     from app.main import app
 
@@ -147,7 +158,7 @@ def client() -> TestClient:
 
 @pytest.fixture
 def running_client() -> Iterator[TestClient]:
-    """The real app with its lifespan, so check_db_connection() actually runs."""
+    """La app real con su lifespan, para que check_db_connection() se ejecute de verdad."""
     from app.main import app
 
     with TestClient(app) as started:
@@ -156,7 +167,8 @@ def running_client() -> Iterator[TestClient]:
 
 @pytest.fixture
 def clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Unsets every Settings variable, for tests asserting on defaults or on
-    .env.example. Without it the isolation block above would shadow what they read."""
+    """Borra todas las variables de Settings, para los tests que comprueban los valores por
+    defecto o el .env.example. Sin ella, el bloque de aislamiento de arriba taparía lo que
+    esos tests leen."""
     for name in SETTINGS_ENV_VARS:
         monkeypatch.delenv(name, raising=False)

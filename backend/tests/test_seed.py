@@ -1,3 +1,6 @@
+"""Tests del seed: primero las constantes por defecto en sí, y después su escritura
+idempotente contra la base de datos."""
+
 from datetime import date
 
 import pytest
@@ -9,7 +12,8 @@ from app.models import AppointmentType, AvailabilityRule
 from app.seed import DEFAULT_APPOINTMENT_TYPES, DEFAULT_AVAILABILITY_RULES, seed_defaults
 
 # --------------------------------------------------------------------------------------
-# The constants themselves. No database needed: these guard the values, not the writing.
+# Las constantes en sí. No hace falta base de datos: esto vigila los valores, no la
+# escritura.
 # --------------------------------------------------------------------------------------
 
 
@@ -19,34 +23,34 @@ def test_the_default_schedule_is_ten_weekday_blocks() -> None:
 
 
 def test_every_default_rule_would_satisfy_its_constraints() -> None:
-    """Cheaper than finding out from an IntegrityError in a migration job."""
+    """Más barato que enterarse por un IntegrityError en el job de migraciones."""
     for rule in DEFAULT_AVAILABILITY_RULES:
         assert 0 <= rule.weekday <= 6
         assert rule.ends_at_local > rule.starts_at_local
 
 
 def test_default_rules_are_unique_by_their_natural_key() -> None:
-    """If two defaults collided, the seed would fail on a fresh database -- and only
-    there, since on a seeded one the duplicate would be skipped as already present."""
+    """Si dos valores por defecto colisionasen, el seed fallaría en una base de datos nueva
+    -- y solo ahí, porque en una ya sembrada el duplicado se saltaría por existente."""
     keys = [(rule.weekday, rule.starts_at_local) for rule in DEFAULT_AVAILABILITY_RULES]
 
     assert len(set(keys)) == len(keys)
 
 
 def test_there_is_exactly_one_default_appointment_type() -> None:
-    """The API falls back to the single active type when the client names none. A second
-    seeded type would not break that, but it would make the fallback ambiguous, so it is
-    a deliberate decision rather than something to drift into."""
+    """La API cae al único tipo activo cuando el cliente no nombra ninguno. Un segundo tipo
+    sembrado no rompería eso, pero haría ambigua esa caída, así que es una decisión
+    deliberada y no algo hacia lo que dejarse llevar."""
     assert len(DEFAULT_APPOINTMENT_TYPES) == 1
     assert DEFAULT_APPOINTMENT_TYPES[0].duration_minutes == 30
     assert DEFAULT_APPOINTMENT_TYPES[0].buffer_minutes >= 0
 
 
 def test_every_default_block_fits_at_least_one_meeting() -> None:
-    """A 30 minute meeting plus its 15 minute buffer has to fit inside every block, or
-    that block would be seeded only to yield nothing. It does not have to divide evenly:
-    a four hour block fits five meetings and leaves a stranded 15 minutes, which is
-    correct -- the remainder is simply not offered."""
+    """Una reunión de 30 minutos más su colchón de 15 tiene que caber en todos los bloques,
+    o ese bloque se sembraría solo para no dar nada. No hace falta que divida exacto: un
+    bloque de cuatro horas da para cinco reuniones y deja 15 minutos sueltos, que es lo
+    correcto -- ese resto simplemente no se ofrece."""
     appointment = DEFAULT_APPOINTMENT_TYPES[0]
     step = appointment.duration_minutes + appointment.buffer_minutes
 
@@ -61,21 +65,21 @@ def test_every_default_block_fits_at_least_one_meeting() -> None:
 
 
 def test_the_schedule_survives_the_change_of_clocks() -> None:
-    """Ties the seed to app/core/timezone.py. 10:00 Madrid is 09:00Z in winter and
-    08:00Z in summer -- the same wall clock, two different instants. That is the entire
-    reason the rule stores a naive TIME.
+    """Ata el seed a app/core/timezone.py. Las 10:00 de Madrid son las 09:00Z en invierno y
+    las 08:00Z en verano -- el mismo reloj de pared, dos instantes distintos. Esa es toda la
+    razón de que la regla guarde un TIME naive.
     """
     morning = DEFAULT_AVAILABILITY_RULES[0].starts_at_local
 
-    winter = local_to_utc(date(2026, 1, 5), morning)  # a Monday
-    summer = local_to_utc(date(2026, 7, 6), morning)  # a Monday
+    winter = local_to_utc(date(2026, 1, 5), morning)  # un lunes
+    summer = local_to_utc(date(2026, 7, 6), morning)  # un lunes
 
     assert (winter.hour, winter.minute) == (9, 0)
     assert (summer.hour, summer.minute) == (8, 0)
 
 
 # --------------------------------------------------------------------------------------
-# Writing them.
+# Y ahora, escribirlas.
 # --------------------------------------------------------------------------------------
 
 
@@ -96,8 +100,8 @@ def test_seeding_an_empty_database_creates_every_default(db_session: Session) ->
 
 @pytest.mark.db
 def test_seeding_twice_changes_nothing(db_session: Session) -> None:
-    """The property the CI step depends on: migrate-production.yml runs this on every
-    push touching the seed, so a second run must be a no-op."""
+    """La propiedad de la que depende el paso de CI: migrate-production.yml lo ejecuta en
+    cada push que toque el seed, así que una segunda pasada tiene que ser un no-op."""
     seed_defaults(db_session)
     before = _counts(db_session)
 
@@ -109,9 +113,9 @@ def test_seeding_twice_changes_nothing(db_session: Session) -> None:
 
 @pytest.mark.db
 def test_seeding_does_not_overwrite_edited_values(db_session: Session) -> None:
-    """These are the values a fresh database starts from, not values the seed keeps
-    enforcing. Once the duration is changed from the admin panel, redeploying must not
-    put 30 minutes back.
+    """Estos son los valores desde los que arranca una base de datos nueva, no valores que
+    el seed mantenga a la fuerza. Una vez cambiada la duración desde el panel de
+    administración, redesplegar no puede volver a poner 30 minutos.
     """
     seed_defaults(db_session)
     stored = db_session.scalars(select(AppointmentType)).one()
@@ -129,9 +133,9 @@ def test_seeding_does_not_overwrite_edited_values(db_session: Session) -> None:
 
 @pytest.mark.db
 def test_a_deleted_rule_comes_back(db_session: Session) -> None:
-    """The other side of the same coin, and the reason the seed is not simply skipped
-    when the table is non-empty: a row that is missing by its natural key is missing,
-    whether it was never created or deleted by hand."""
+    """La otra cara de la misma moneda, y el motivo de que el seed no se salte sin más
+    cuando la tabla no está vacía: una fila que falta por su clave natural es una fila que
+    falta, la creasen nunca o la borrasen a mano."""
     seed_defaults(db_session)
     db_session.delete(db_session.scalars(select(AvailabilityRule)).first())
     db_session.flush()

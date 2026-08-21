@@ -1,3 +1,5 @@
+# Lo que nunca entra en el contexto de build de la imagen del backend: entornos virtuales,
+# cachés de herramientas, secretos locales y ficheros que solo sirven fuera del contenedor.
 .venv/
 node_modules/
 __pycache__/

@@ -1,3 +1,6 @@
+"""Tests del propio aislamiento de la suite: que no se lee ningún .env, que Sentry es
+inalcanzable y que la sesión transaccional deshace de verdad lo que escribe un test."""
+
 from pathlib import Path
 
 import pytest
@@ -21,29 +24,31 @@ def _dotenv_database_url() -> str | None:
 
 
 def test_the_suite_reads_no_dotenv_file() -> None:
-    """conftest.py empties ENV_FILE before app.core.config is ever imported."""
+    """conftest.py vacía ENV_FILE antes de que se importe nunca app.core.config."""
     assert config._ENV_FILE is None
 
 
-@pytest.mark.skipif(not DOTENV.exists(), reason="no local .env to be shadowed (CI)")
+@pytest.mark.skipif(not DOTENV.exists(), reason="no hay .env local al que hacer sombra (CI)")
 def test_settings_ignore_the_developers_dotenv() -> None:
-    """The regression this whole setup exists for: backend/.env names the Neon dev
-    branch, and pytest used to connect to it unless you prefixed DATABASE_URL by hand."""
+    """La regresión por la que existe todo este montaje: backend/.env nombra la rama de
+    desarrollo de Neon, y pytest se conectaba a ella salvo que prefijases DATABASE_URL a
+    mano."""
     configured = _dotenv_database_url()
 
-    assert configured, ".env exists but declares no DATABASE_URL, revisit this test"
+    assert configured, ".env existe pero no declara DATABASE_URL, revisa este test"
     assert get_settings().database_url != configured
 
 
 def test_sentry_is_unreachable_from_the_suite() -> None:
-    """An exported SENTRY_DSN must not let test runs reach the real project."""
+    """Un SENTRY_DSN exportado no puede permitir que una ejecución de tests llegue al
+    proyecto real."""
     assert not get_settings().sentry_dsn
 
 
 @pytest.mark.db
 def test_db_session_rolls_back_even_after_commit() -> None:
-    """Checked from outside the context manager, so it proves the teardown undid the
-    write rather than that the write was never visible."""
+    """Comprobado desde fuera del context manager, así que demuestra que el desmontaje
+    deshizo la escritura y no que la escritura no fuese visible nunca."""
     from app.core.db import engine
 
     with transactional_session() as session:
@@ -62,12 +67,14 @@ def test_db_session_rolls_back_even_after_commit() -> None:
 def test_client_does_not_open_a_database_connection(
     monkeypatch: pytest.MonkeyPatch, client: TestClient
 ) -> None:
-    """The client fixture skips the lifespan on purpose: most tests need the app, not a
-    database, and CI should not slow down waiting for one."""
+    """La fixture client se salta el lifespan a propósito: la mayoría de tests necesitan la
+    app, no una base de datos, y CI no debería ir más lento esperando a una."""
     from app.core import db
 
     def explode() -> None:
-        raise AssertionError("the lifespan ran, so the client fixture touched the database")
+        raise AssertionError(
+            "el lifespan se ejecutó, así que la fixture client tocó la base de datos"
+        )
 
     monkeypatch.setattr(db, "check_db_connection", explode)
 

@@ -1,24 +1,31 @@
+"""La clase Base declarativa y la convención de nombres de índices y restricciones.
+
+De aquí hereda todo modelo del proyecto, y es lo que hace que los nombres que genera
+SQLAlchemy y los que acaba teniendo Postgres coincidan.
+"""
+
 from sqlalchemy import MetaData
 from sqlalchemy.orm import DeclarativeBase
 
-# Deterministic names for every index and constraint. Postgres names anything left
-# unnamed itself, and those generated names do not match what SQLAlchemy would emit,
-# so `alembic check` -- the CI job that compares the models against the database --
-# reports drift that is not there. With the convention in place both sides agree.
+# Nombres deterministas para cada índice y cada restricción. Postgres bautiza por su
+# cuenta todo lo que se deje sin nombre, y esos nombres generados no coinciden con los que
+# emitiría SQLAlchemy, así que `alembic check` -- el job de CI que compara los modelos
+# contra la base de datos -- reporta desviaciones que no existen. Con la convención puesta,
+# ambos lados coinciden.
 #
-# This has to be settled while the schema is still empty: applying it later means
-# renaming live constraints in production.
+# Esto hay que dejarlo cerrado mientras el esquema está todavía vacío: aplicarlo más tarde
+# significa renombrar restricciones vivas en producción.
 #
-# Two of the patterns are load-bearing:
+# Dos de los patrones son críticos:
 #
-# - "column_0_N_name" (not "column_0_name") on ix/uq spells out every column in the
-#   index. With only the first, two composite indexes starting on the same column
-#   would generate the same name and Postgres would reject the second.
+# - "column_0_N_name" (y no "column_0_name") en ix/uq escribe todas las columnas del
+#   índice. Con solo la primera, dos índices compuestos que empiecen por la misma columna
+#   generarían el mismo nombre y Postgres rechazaría el segundo.
 #
-# - "ck" builds on constraint_name, which forces every CheckConstraint to be named by
-#   hand (name="duration_range"). That is the point: a violation then reports
-#   ck_appointment_type_duration_range instead of an opaque hash. An unnamed CHECK
-#   fails when the migration is generated -- locally, not in production.
+# - "ck" se apoya en constraint_name, lo que obliga a nombrar a mano cada CheckConstraint
+#   (name="duration_range"). Y eso es justo lo que se busca: una violación reporta entonces
+#   ck_appointment_type_duration_range en vez de un hash opaco. Un CHECK sin nombre falla al
+#   generar la migración -- en local, no en producción.
 NAMING_CONVENTION = {
     "ix": "ix_%(table_name)s_%(column_0_N_name)s",
     "uq": "uq_%(table_name)s_%(column_0_N_name)s",
@@ -29,6 +36,6 @@ NAMING_CONVENTION = {
 
 
 class Base(DeclarativeBase):
-    # Table names are singular (booking, appointment_type): one row is one booking,
-    # and the table then matches its mapped class name character for character.
+    # Los nombres de tabla van en singular (booking, appointment_type): una fila es una
+    # reserva, y la tabla coincide entonces carácter a carácter con su clase mapeada.
     metadata = MetaData(naming_convention=NAMING_CONVENTION)

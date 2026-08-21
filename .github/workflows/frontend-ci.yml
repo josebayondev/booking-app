@@ -1,3 +1,6 @@
+# CI del frontend: lint, tipos, build y auditoría de npm. Hoy está dormida -- todos los
+# jobs cuelgan del guard `changes`, que sigue en false mientras no exista
+# frontend/package.json.
 name: Frontend CI
 
 on:
@@ -35,15 +38,15 @@ jobs:
       - name: Detect frontend changes
         id: filter
         run: |
-          # Two conditions, both required.
+          # Dos condiciones, y hacen falta las dos.
           #
-          # 1. package.json must exist. frontend/ is still an empty placeholder,
-          #    so npm ci and npm run lint have nothing to work with and the job
-          #    fails on setup-node before running anything. This guard drops out
-          #    on its own once the scaffold lands.
-          # 2. This workflow file counts as a frontend change on purpose:
-          #    otherwise a PR that only edits the CI skips every job, so a broken
-          #    pipeline ships unnoticed until the next PR touching frontend/.
+          # 1. package.json tiene que existir. frontend/ sigue siendo un hueco vacío,
+          #    así que npm ci y npm run lint no tienen con qué trabajar y el job
+          #    falla en setup-node antes de ejecutar nada. Este guard desaparece
+          #    solo en cuanto aterrice el andamiaje.
+          # 2. Este propio fichero cuenta como cambio de frontend a propósito: si no,
+          #    un PR que solo toque la CI se saltaría todos los jobs, y una pipeline
+          #    rota pasaría desapercibida hasta el siguiente PR que tocase frontend/.
           if [ -f frontend/package.json ] && git diff --name-only \
             "${{ github.event.pull_request.base.sha }}" \
             "${{ github.event.pull_request.head.sha }}" \
@@ -128,13 +131,15 @@ jobs:
       - name: Run build
         run: npm run build
 
-  # The npm half of dependency scanning. Dormant today: like every job here it
-  # hangs off the `changes` guard, which stays false while frontend/package.json
-  # does not exist, so this starts running on its own the day the scaffold lands.
+  # La mitad npm del escaneo de dependencias. Hoy dormido: como todos los jobs de
+  # aquí, cuelga del guard `changes`, que sigue en false mientras no exista
+  # frontend/package.json, así que empieza a correr solo el día que aterrice el
+  # andamiaje.
   #
-  # --audit-level=high keeps the gate on what is actually actionable; the npm
-  # ecosystem produces a constant stream of low/moderate advisories in dev-only
-  # tooling. If that ever gets noisy anyway, --omit=dev is the next lever.
+  # --audit-level=high mantiene la barrera en lo que es realmente accionable; el
+  # ecosistema npm produce un goteo constante de avisos bajos/moderados en
+  # herramientas que solo se usan en desarrollo. Si aun así llega a hacer ruido,
+  # --omit=dev es la siguiente palanca.
   audit:
     name: audit
     needs: build
@@ -152,7 +157,7 @@ jobs:
         with:
           node-version: "22"
 
-      # No npm ci: npm audit resolves straight from package-lock.json, so
-      # installing node_modules first would only make the job slower.
+      # Sin npm ci: npm audit resuelve directamente desde package-lock.json, así que
+      # instalar node_modules antes solo haría el job más lento.
       - name: Audit dependencies
         run: npm audit --audit-level=high

@@ -1,11 +1,11 @@
-"""The initial configuration every environment needs before it can take a booking.
+"""La configuración inicial que necesita cualquier entorno antes de poder aceptar una reserva.
 
-Run it with `uv run python -m app.seed`. It is idempotent, so running it again is safe,
-and .github/workflows/migrate-production.yml runs it right after `alembic upgrade head`
-for exactly that reason: an environment that migrated but was never seeded would answer
-GET /availability with an empty list and look broken rather than closed.
+Se ejecuta con `uv run python -m app.seed`. Es idempotente, así que volver a lanzarlo es
+seguro, y .github/workflows/migrate-production.yml lo corre justo después de
+`alembic upgrade head` exactamente por eso: un entorno migrado pero sin sembrar
+respondería a GET /availability con una lista vacía y parecería roto en vez de cerrado.
 
-The values here are *initial* values, not enforced ones -- see seed_defaults().
+Los valores de aquí son valores *iniciales*, no impuestos -- ver seed_defaults().
 """
 
 import logging
@@ -36,8 +36,8 @@ class AvailabilityRuleDefaults(NamedTuple):
     ends_at_local: time
 
 
-# One type for now. The API will leave the field optional and fall back to the single
-# active type, so adding a second one later changes no contract.
+# Un solo tipo por ahora. La API dejará el campo opcional y caerá al único tipo activo,
+# así que añadir un segundo más adelante no cambia ningún contrato.
 DEFAULT_APPOINTMENT_TYPES: tuple[AppointmentTypeDefaults, ...] = (
     AppointmentTypeDefaults(
         slug="reunion-inicial",
@@ -50,8 +50,8 @@ DEFAULT_APPOINTMENT_TYPES: tuple[AppointmentTypeDefaults, ...] = (
     ),
 )
 
-# Monday to Friday, two blocks a day, in Europe/Madrid wall-clock time. Ten rows.
-_WORKDAYS = range(5)  # 0 = Monday, matching date.weekday()
+# De lunes a viernes, dos bloques al día, en hora de pared de Europe/Madrid. Diez filas.
+_WORKDAYS = range(5)  # 0 = lunes, igual que date.weekday()
 _DAILY_BLOCKS = ((time(10, 0), time(14, 0)), (time(16, 0), time(19, 0)))
 
 DEFAULT_AVAILABILITY_RULES: tuple[AvailabilityRuleDefaults, ...] = tuple(
@@ -62,18 +62,20 @@ DEFAULT_AVAILABILITY_RULES: tuple[AvailabilityRuleDefaults, ...] = tuple(
 
 
 def seed_defaults(session: Session) -> int:
-    """Insert whatever default rows are missing. Returns how many were created.
+    """Inserta las filas por defecto que falten. Devuelve cuántas ha creado.
 
-    Idempotent by natural key: appointment types by slug, availability rules by
-    (weekday, starts_at_local) -- the same pairs the unique constraints are built on.
+    Idempotente por clave natural: los tipos de cita por slug, las reglas de
+    disponibilidad por (weekday, starts_at_local) -- los mismos pares sobre los que están
+    construidas las restricciones únicas.
 
-    It deliberately **does not update rows that already exist**. Once the duration is
-    changed to 45 minutes from the admin panel, or a Friday afternoon is deleted, the
-    next deploy must not put it back. These are the values a fresh database starts from,
-    not values this function keeps enforcing.
+    Deliberadamente **no actualiza las filas que ya existen**. Una vez que la duración se
+    cambia a 45 minutos desde el panel de administración, o que se borra un viernes por la
+    tarde, el siguiente despliegue no puede volver a ponerlo. Estos son los valores desde
+    los que arranca una base de datos nueva, no valores que esta función mantenga a la
+    fuerza.
 
-    Does not commit: the caller decides. That is what lets the tests run it inside the
-    db_session fixture's transaction and have it rolled back.
+    No hace commit: decide quien llama. Eso es lo que permite a los tests ejecutarlo dentro
+    de la transacción del fixture db_session y que se deshaga después.
     """
     created = 0
 
@@ -105,8 +107,8 @@ def seed_defaults(session: Session) -> int:
 
 
 def main() -> None:
-    # Imported here and not at module level so that importing app.seed -- which the
-    # tests do -- never builds an engine as a side effect.
+    # Importado aquí y no a nivel de módulo para que importar app.seed -- cosa que hacen
+    # los tests -- no construya un engine como efecto colateral.
     from app.core.db import SessionLocal
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")

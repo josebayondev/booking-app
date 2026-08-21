@@ -1,3 +1,9 @@
+"""Configuración de la aplicación, leída del entorno.
+
+Una única clase `Settings` de pydantic-settings, cacheada con `get_settings()`. Aquí es
+donde se añade cualquier variable de entorno nueva del backend.
+"""
+
 import os
 from functools import lru_cache
 from typing import Annotated, Literal
@@ -6,11 +12,11 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
-# The dotenv file is a local-development convenience: Render and Docker inject real
-# environment variables and ship no .env at all. Making the path itself overridable is
-# what lets the test suite opt out of it entirely -- tests/conftest.py sets ENV_FILE to
-# an empty string, which means "read no file", so Settings falls back to the defaults
-# below instead of to whatever database the developer happens to have configured.
+# El fichero .env es una comodidad de desarrollo local: Render y Docker inyectan
+# variables de entorno reales y no llevan ningún .env. Que la ruta sea configurable es lo
+# que permite a los tests salirse del todo -- tests/conftest.py pone ENV_FILE a cadena
+# vacía, que significa "no leas ningún fichero", así que Settings cae a los valores por
+# defecto de abajo y no a la base de datos que el desarrollador tenga configurada.
 _ENV_FILE = os.getenv("ENV_FILE", ".env") or None
 
 
@@ -19,20 +25,21 @@ class Settings(BaseSettings):
 
     environment: Literal["local", "preview", "production"] = "local"
     project_name: str = "Booking App API"
-    # NoDecode is required: without it pydantic-settings tries to JSON-decode the
-    # raw value before any validator runs, so a comma-separated CORS_ORIGINS
-    # raises SettingsError at startup and split_cors_origins never gets called.
-    # Defaults to no origins at all: a deployment that forgets CORS_ORIGINS must
-    # fail closed, not silently allow a developer's localhost. Local setups get the
-    # origin from .env.example or docker-compose.yml, where it is spelled out.
+    # NoDecode es obligatorio: sin él pydantic-settings intenta decodificar el valor
+    # bruto como JSON antes de que corra ningún validador, así que un CORS_ORIGINS
+    # separado por comas lanza SettingsError al arrancar y split_cors_origins nunca
+    # llega a ejecutarse.
+    # Por defecto, ningún origen: un despliegue que se olvide de CORS_ORIGINS tiene que
+    # fallar cerrado, no permitir en silencio el localhost de un desarrollador. En local
+    # el origen sale de .env.example o de docker-compose.yml, donde está explícito.
     cors_origins: Annotated[list[str], NoDecode] = []
     database_url: str = "postgresql://postgres:postgres@localhost:5432/booking_app"
-    # Unset means "Sentry off": that is the default locally and in CI, and only
-    # the deployed environments define it.
+    # Sin valor significa "Sentry apagado": es lo normal en local y en CI, y solo los
+    # entornos desplegados lo definen.
     sentry_dsn: str | None = None
-    # The owner's timezone: bookings are stored in UTC, but availability rules are
-    # expressed in his local wall clock. One owner and one calendar, so this is
-    # configuration rather than a column. See app/core/timezone.py.
+    # La zona horaria del dueño: las reservas se guardan en UTC, pero las reglas de
+    # disponibilidad se expresan en su reloj de pared local. Un dueño y un calendario,
+    # así que esto es configuración y no una columna. Ver app/core/timezone.py.
     booking_timezone: str = "Europe/Madrid"
 
     @field_validator("cors_origins", mode="before")
@@ -45,12 +52,12 @@ class Settings(BaseSettings):
     @field_validator("booking_timezone")
     @classmethod
     def validate_booking_timezone(cls, value: str) -> str:
-        # Fail at startup rather than on the first booking: a typo here would
-        # otherwise sit dormant until someone tried to read the calendar.
+        # Fallar al arrancar y no en la primera reserva: una errata aquí se quedaría
+        # dormida hasta que alguien intentase leer el calendario.
         #
-        # Re-raised as ValueError on purpose. ZoneInfoNotFoundError subclasses
-        # KeyError, which pydantic does not convert into a ValidationError, so the
-        # unwrapped version surfaces as a bare KeyError that never names the field.
+        # Se relanza como ValueError a propósito. ZoneInfoNotFoundError hereda de
+        # KeyError, que pydantic no convierte en ValidationError, así que sin envolverlo
+        # sale un KeyError pelado que ni siquiera dice de qué campo se trata.
         try:
             ZoneInfo(value)
         except ZoneInfoNotFoundError as exc:

@@ -1,3 +1,6 @@
+"""Tests de los reintentos de conexión al arrancar: Neon puede estar despertando, pero una
+base realmente inalcanzable tiene que tumbar el despliegue."""
+
 import logging
 
 import pytest
@@ -5,14 +8,14 @@ from sqlalchemy.exc import OperationalError
 
 from app.core import db
 
-# Not purely a unit test: the happy path of the retry test lets the second attempt
-# reach the real engine.connect().
+# No es un test puramente unitario: el camino feliz del test de reintentos deja que el
+# segundo intento llegue al engine.connect() real.
 pytestmark = pytest.mark.db
 
 
 @pytest.fixture(autouse=True)
 def _no_sleeping(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Keeps the retry backoff from actually delaying the suite."""
+    """Evita que la espera entre reintentos retrase de verdad la suite."""
     monkeypatch.setattr(db.time, "sleep", lambda _seconds: None)
 
 
@@ -23,7 +26,8 @@ def _boom() -> OperationalError:
 def test_retries_until_the_database_answers(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """Neon suspends idle compute, so the first attempt of a deploy can fail."""
+    """Neon suspende el cómputo inactivo, así que el primer intento de un despliegue puede
+    fallar."""
     attempts = {"n": 0}
     real_connect = db.engine.connect
 
@@ -46,7 +50,7 @@ def test_retries_until_the_database_answers(
 def test_raises_once_the_retries_run_out(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """A genuinely unreachable database must still fail the deploy."""
+    """Una base de datos realmente inalcanzable tiene que seguir tumbando el despliegue."""
     attempts = {"n": 0}
 
     def always_fails():  # type: ignore[no-untyped-def]

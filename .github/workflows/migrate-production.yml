@@ -1,22 +1,25 @@
+# Aplica las migraciones (y el seed) contra la base de datos de producción.
+#
+# El comando pre-deploy de Render es una funcionalidad de pago, así que las migraciones
+# corren aquí en su lugar. Aplicarlas desde CI las mantiene fuera del arranque de la
+# aplicación, donde competirían entre instancias y que además CLAUDE.md descarta.
 name: Migrate production database
 
-# Render's pre-deploy command is a paid feature, so migrations run here instead.
-# Applying them from CI keeps them out of application startup, which would race
-# between instances and is ruled out by CLAUDE.md.
 on:
   push:
     branches: [main]
     paths:
       - "backend/alembic/**"
-      # The seed too, because the job runs it and it lives outside alembic/. What needs
-      # this path is *adding* a default -- a second appointment type, a Saturday block:
-      # rows that do not exist yet by natural key, which the seed inserts.
+      # El seed también, porque el job lo ejecuta y vive fuera de alembic/. Lo que
+      # necesita esta ruta es *añadir* un valor por defecto -- un segundo tipo de cita,
+      # un bloque de sábado: filas que todavía no existen por clave natural y que el
+      # seed inserta.
       #
-      # Editing an existing default is a different matter and this path does not help
-      # there: seed_defaults() never updates a row that is already present, so changing
-      # 30 to 45 in app/seed.py leaves production on 30 whether this workflow fires or
-      # not. That is deliberate -- see the docstring. Changing a live value is an UPDATE,
-      # or the admin panel once it exists, not an edit to the defaults.
+      # Editar un valor por defecto ya existente es otra cosa y esta ruta no ayuda ahí:
+      # seed_defaults() no actualiza nunca una fila que ya está, así que cambiar 30 por
+      # 45 en app/seed.py deja producción en 30 se dispare o no este workflow. Es
+      # deliberado -- ver el docstring. Cambiar un valor vivo es un UPDATE, o el panel
+      # de administración cuando exista, no una edición de los valores por defecto.
       - "backend/app/seed.py"
       - ".github/workflows/migrate-production.yml"
   workflow_dispatch:
@@ -24,8 +27,8 @@ on:
 permissions:
   contents: read
 
-# Never run two migrations at once, and never cancel one halfway through: an
-# interrupted upgrade can leave alembic_version out of step with the schema.
+# Nunca dos migraciones a la vez, y nunca cancelar una a medias: un upgrade
+# interrumpido puede dejar alembic_version desacompasado respecto al esquema.
 concurrency:
   group: migrate-production
   cancel-in-progress: false
@@ -52,18 +55,18 @@ jobs:
           enable-cache: true
           cache-dependency-glob: "backend/uv.lock"
 
-      # No --extra dev: alembic is a runtime dependency, and this job has no
-      # business installing ruff, mypy or pytest.
+      # Sin --extra dev: alembic es dependencia de runtime, y este job no tiene nada
+      # que hacer instalando ruff, mypy o pytest.
       - name: Install dependencies
         run: uv sync --frozen
 
-      # A repository generated from this template has no such secret, and its very
-      # first commit touches backend/alembic/**, so this workflow fires and alembic
-      # dies with "Could not parse SQLAlchemy URL from given URL string". There is
-      # nothing to migrate without a database: say so and finish green.
+      # Un repositorio generado desde esta plantilla no tiene ese secreto, y su primer
+      # commit ya toca backend/alembic/**, así que este workflow se dispara y alembic
+      # muere con "Could not parse SQLAlchemy URL from given URL string". Sin base de
+      # datos no hay nada que migrar: decirlo y terminar en verde.
       #
-      # The check lives in a step rather than in the job's `if:` because the secrets
-      # context is not available at job level.
+      # La comprobación vive en un paso y no en el `if:` del job porque el contexto
+      # `secrets` no está disponible a nivel de job.
       - name: Check for the production database secret
         id: guard
         env:
@@ -92,13 +95,13 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL_PRODUCTION }}
         run: uv run alembic upgrade head
 
-      # Runs on every push that gets this far, which is safe: seed_defaults() inserts
-      # only the default rows that are missing and never touches one that already
-      # exists, so a duration edited from the admin panel survives a redeploy.
+      # Corre en cada push que llegue hasta aquí, y es seguro: seed_defaults() inserta
+      # solo las filas por defecto que faltan y no toca nunca una que ya existe, así que
+      # una duración editada desde el panel de administración sobrevive a un redespliegue.
       #
-      # It belongs here rather than in a manual step because a database that migrated
-      # but was never seeded answers GET /availability with an empty calendar -- which
-      # looks like a booked-solid professional, not like a broken deploy.
+      # Va aquí y no en un paso manual porque una base de datos migrada pero nunca
+      # sembrada responde a GET /availability con un calendario vacío -- que parece un
+      # profesional con la agenda llena, no un despliegue roto.
       - name: Seed default configuration
         if: steps.guard.outputs.configured == 'true'
         env:

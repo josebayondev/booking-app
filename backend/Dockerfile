@@ -1,21 +1,24 @@
+# Imagen del backend: build en dos etapas -- una instala las dependencias bloqueadas en un
+# venv, la otra se queda solo con ese venv y el código, y corre como usuario sin privilegios.
+
 FROM python:3.13-slim@sha256:ffb752e139c0a19692a43af8d8523b274222dd68eebad5d583b45c2201c6e30a AS builder
 
 COPY --from=ghcr.io/astral-sh/uv:0.12.5@sha256:e85be844203885286c60ffad8a858d48afb6c5a5c237ca0e67f12e74b8f174b1 /uv /bin/uv
 
 WORKDIR /build
 
-# UV_PROJECT_ENVIRONMENT keeps the venv at /opt/venv so the runtime stage is unchanged.
-# UV_COMPILE_BYTECODE precompiles the dependencies, which cuts Render's cold start.
+# UV_PROJECT_ENVIRONMENT mantiene el venv en /opt/venv para que la etapa runtime no cambie.
+# UV_COMPILE_BYTECODE precompila las dependencias, lo que recorta el arranque en frío de Render.
 ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
     UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy
 
 COPY pyproject.toml uv.lock ./
 
-# --frozen fails if the lock is out of sync with pyproject instead of re-resolving,
-# so the image always gets the exact versions committed in uv.lock.
-# --no-install-project installs dependencies only; the runtime stage copies app/
-# straight from the build context. Extras (dev) are not installed by default.
+# --frozen falla si el lock no está en sintonía con pyproject en vez de volver a resolver,
+# así que la imagen recibe siempre las versiones exactas commiteadas en uv.lock.
+# --no-install-project instala solo dependencias; la etapa runtime copia app/ directamente
+# del contexto de build. Los extras (dev) no se instalan por defecto.
 RUN uv sync --frozen --no-install-project
 
 
@@ -40,4 +43,5 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 
 USER appuser
 
+# Forma shell a propósito, para que $PORT se expanda: Render inyecta el puerto por entorno.
 CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

@@ -1,3 +1,6 @@
+"""Tests de la integración con Sentry y, sobre todo, del borrado de datos personales:
+que un evento capturado de verdad no lleva ni un email ni un teléfono."""
+
 import json
 import logging
 from collections.abc import Iterator
@@ -17,14 +20,14 @@ DSN = "https://public@o0.ingest.sentry.io/0"
 
 
 class IsolatedSettings(Settings):
-    """Ignores any local .env so these tests only see what they set themselves."""
+    """Ignora cualquier .env local para que estos tests solo vean lo que ellos fijan."""
 
     model_config = SettingsConfigDict(env_file=None, extra="ignore")
 
 
 @pytest.fixture
 def init_kwargs(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
-    """Records what configure_sentry would pass to sentry_sdk.init."""
+    """Registra lo que configure_sentry le pasaría a sentry_sdk.init."""
     recorded: list[dict[str, Any]] = []
     monkeypatch.setattr(sentry_sdk, "init", lambda **kwargs: recorded.append(kwargs))
     return recorded
@@ -53,7 +56,7 @@ def test_dsn_initialises_sentry_with_the_current_environment(
 
 
 def test_pii_is_never_sent(init_kwargs: list[dict[str, Any]]) -> None:
-    """CLAUDE.md requires send_default_pii=False: bookings carry personal data."""
+    """CLAUDE.md exige send_default_pii=False: las reservas llevan datos personales."""
     configure_sentry(IsolatedSettings(sentry_dsn=DSN))
 
     assert init_kwargs[0]["send_default_pii"] is False
@@ -71,7 +74,7 @@ def test_logging_errors_are_reported_as_events(init_kwargs: list[dict[str, Any]]
 def test_invalid_dsn_does_not_kill_the_app(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """configure_sentry runs at import time: raising here would kill the container."""
+    """configure_sentry corre en tiempo de import: lanzar aquí mataría el contenedor."""
 
     def explode(**kwargs: Any) -> None:
         raise ValueError("Unsupported scheme ''")
@@ -100,7 +103,8 @@ def test_before_send_is_registered(init_kwargs: list[dict[str, Any]]) -> None:
     ids=["email", "phone", "phone-with-prefix"],
 )
 def test_free_text_pii_is_redacted(message: str, leak: str) -> None:
-    """The realistic leak: PII interpolated into a log line, under no useful key."""
+    """La fuga realista: datos personales interpolados en una línea de log, sin ninguna
+    clave que sirva de pista."""
     event: Any = {"logentry": {"formatted": message}}
 
     scrubbed: Any = scrub_event(event, {})
@@ -110,7 +114,8 @@ def test_free_text_pii_is_redacted(message: str, leak: str) -> None:
 
 
 def test_sensitive_keys_are_redacted_whatever_the_value_looks_like() -> None:
-    """A phone stored as "ext. 4" matches no pattern, but the key gives it away."""
+    """Un teléfono guardado como "ext. 4" no encaja con ningún patrón, pero la clave lo
+    delata."""
     event: Any = {"extra": {"customer_email": "not-an-email", "phone": "ext. 4"}}
 
     scrubbed: Any = scrub_event(event, {})
@@ -119,7 +124,7 @@ def test_sensitive_keys_are_redacted_whatever_the_value_looks_like() -> None:
 
 
 def test_pii_is_redacted_however_deeply_it_is_nested() -> None:
-    """Sentry captures local variables from every frame; that is the real hiding place."""
+    """Sentry captura las variables locales de cada frame; ese es el escondite de verdad."""
     event: Any = {
         "exception": {
             "values": [
@@ -140,7 +145,8 @@ def test_pii_is_redacted_however_deeply_it_is_nested() -> None:
 
 
 def test_scrubbing_leaves_useful_debugging_data_alone() -> None:
-    """A pattern loose enough to eat ids and timestamps would make events useless."""
+    """Un patrón lo bastante laxo como para comerse ids y timestamps dejaría los eventos
+    inservibles."""
     event: Any = {
         "event_id": "9f8e7d6c5b4a39281706f5e4d3c2b1a0",
         "timestamp": "1787215705368",
@@ -153,13 +159,13 @@ def test_scrubbing_leaves_useful_debugging_data_alone() -> None:
 
 
 def test_events_are_scrubbed_never_dropped() -> None:
-    """Returning None would silently discard the report instead of cleaning it."""
+    """Devolver None descartaría el informe en silencio en vez de limpiarlo."""
     assert scrub_event({"logentry": {"formatted": "boom"}}, {}) is not None
 
 
 class RecordingTransport(Transport):
-    """Keeps every envelope in memory instead of sending it. A Transport subclass
-    rather than a plain function: sentry-sdk deprecated function transports."""
+    """Guarda cada envelope en memoria en vez de enviarlo. Una subclase de Transport y no
+    una función suelta: sentry-sdk dejó obsoletos los transportes en forma de función."""
 
     def __init__(self, events: list[dict[str, Any]]) -> None:
         super().__init__()
@@ -173,8 +179,8 @@ class RecordingTransport(Transport):
 
 @pytest.fixture
 def sent_events(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[dict[str, Any]]]:
-    """Initialises Sentry exactly as configure_sentry does, but nothing leaves the
-    process: the transport just records what would have gone over the wire."""
+    """Inicializa Sentry exactamente igual que configure_sentry, pero nada sale del proceso:
+    el transporte se limita a registrar lo que habría viajado por el cable."""
     events: list[dict[str, Any]] = []
     real_init = sentry_sdk.init
 
@@ -190,8 +196,8 @@ def sent_events(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[dict[str, Any]
 def test_dod_a_captured_event_carries_no_email_or_phone(
     sent_events: list[dict[str, Any]],
 ) -> None:
-    """The DoD from ClickUp, end to end: log an error the way the app really does
-    and inspect the payload Sentry would have transmitted."""
+    """El DoD de ClickUp, de punta a punta: registrar un error como lo hace la app de verdad
+    e inspeccionar el payload que Sentry habría transmitido."""
     logging.getLogger("app.test").error(
         "no se pudo confirmar la reserva de ana.lopez@example.com, tel 612345678"
     )
