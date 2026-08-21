@@ -1,3 +1,10 @@
+"""Punto de entrada de la API: construye la aplicación FastAPI y la deja lista para servir.
+
+Aquí se monta todo en el orden que importa: Sentry antes de que exista la app, el
+lifespan que comprueba la base de datos al arrancar, el CORS con su lista blanca de
+orígenes, las cabeceras de seguridad por fuera de todo y, al final, los routers.
+"""
+
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -16,7 +23,7 @@ logging.basicConfig(level=logging.INFO)
 settings = get_settings()
 is_production = settings.environment == "production"
 
-# Before the app exists, so anything raised while wiring it up is reported too.
+# Antes de que exista la app, para que también se reporte lo que falle al montarla.
 configure_sentry(settings)
 
 
@@ -42,11 +49,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Added last so it wraps CORSMiddleware: preflight responses are answered by CORS
-# itself and would otherwise go out without any security header. HSTS is keyed off
-# the environment rather than the request scheme because Render terminates TLS and
-# talks plain HTTP to the container, and because sending HSTS over http://localhost
-# would poison the browser's HSTS cache for every other local project.
+# Se añade el último para que envuelva a CORSMiddleware: las respuestas de preflight las
+# contesta el propio CORS y si no saldrían sin ninguna cabecera de seguridad. HSTS se
+# decide por el entorno y no por el esquema de la petición porque Render termina el TLS y
+# habla HTTP plano con el contenedor, y porque mandar HSTS por http://localhost
+# envenenaría la caché HSTS del navegador para cualquier otro proyecto local.
 app.add_middleware(SecurityHeadersMiddleware, hsts=settings.environment != "local")
 
 app.include_router(health_router)

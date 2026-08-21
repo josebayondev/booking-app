@@ -1,24 +1,24 @@
-"""Security headers added to every HTTP response.
+"""Cabeceras de seguridad que se añaden a todas las respuestas HTTP.
 
-Registered last in main.py, which makes it the outermost middleware: Starlette
-inserts each new middleware at the front of its list and builds the stack in
-reverse. That ordering matters because CORSMiddleware answers preflight requests
-itself without ever reaching the router, so only a middleware sitting outside it
-can put headers on those responses.
+Se registra la última en main.py, lo que la convierte en el middleware más externo:
+Starlette inserta cada middleware nuevo al principio de su lista y monta la pila al
+revés. Ese orden importa porque CORSMiddleware contesta él mismo las peticiones de
+preflight sin llegar nunca al router, así que solo un middleware que quede por fuera
+puede ponerles cabeceras a esas respuestas.
 """
 
 from starlette.datastructures import MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-# This service only ever returns JSON, so it needs permission to load nothing at all.
+# Este servicio solo devuelve JSON, así que no necesita permiso para cargar nada.
 STRICT_CSP = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
 
-# Swagger UI and ReDoc are real HTML pages pulling assets from a CDN. 'unsafe-inline'
-# for scripts is unavoidable: FastAPI's get_swagger_ui_html() emits an inline <script>
-# that boots SwaggerUIBundle. ReDoc pulls Montserrat and Roboto from Google Fonts,
-# injects its styles at runtime and spawns web workers from blob: URLs. The looser
-# policy is confined to DOCS_PATHS, and those routes are already switched off in
-# production (see docs_url=None in main.py).
+# Swagger UI y ReDoc sí son páginas HTML de verdad que tiran de un CDN. El
+# 'unsafe-inline' para scripts es inevitable: el get_swagger_ui_html() de FastAPI emite
+# un <script> en línea que arranca SwaggerUIBundle. ReDoc se trae Montserrat y Roboto de
+# Google Fonts, inyecta sus estilos en tiempo de ejecución y lanza web workers desde URLs
+# blob:. La política laxa se limita a DOCS_PATHS, y esas rutas ya están apagadas en
+# producción (ver docs_url=None en main.py).
 DOCS_CSP = (
     "default-src 'none'; "
     "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
@@ -32,18 +32,18 @@ DOCS_CSP = (
     "form-action 'none'"
 )
 
-# /openapi.json is deliberately absent: it is JSON, so it keeps the strict policy.
+# /openapi.json falta a propósito: es JSON, así que se queda con la política estricta.
 DOCS_PATHS = frozenset({"/docs", "/docs/oauth2-redirect", "/redoc"})
 
-# One year. No `preload` directive: the service is hosted under onrender.com, a
-# domain we do not own and must not submit to the preload list.
+# Un año. Sin directiva `preload`: el servicio se aloja bajo onrender.com, un dominio que
+# no es nuestro y que no debemos enviar a la lista de precarga.
 HSTS_VALUE = "max-age=31536000; includeSubDomains"
 
 BASE_HEADERS = {
     "x-content-type-options": "nosniff",
     "x-frame-options": "DENY",
-    # A booking URL carries an opaque token, so it must never travel to a third
-    # party in a Referer header.
+    # La URL de una reserva lleva un token opaco, así que no puede viajar nunca a un
+    # tercero dentro de una cabecera Referer.
     "referrer-policy": "no-referrer",
     "permissions-policy": (
         "accelerometer=(), camera=(), geolocation=(), gyroscope=(), "
@@ -53,11 +53,11 @@ BASE_HEADERS = {
 
 
 class SecurityHeadersMiddleware:
-    """Pure ASGI middleware: it only rewrites the response start message.
+    """Middleware ASGI puro: solo reescribe el mensaje de inicio de la respuesta.
 
-    Deliberately not a BaseHTTPMiddleware subclass — that one buffers through an
-    anyio task group, which breaks streaming responses and background tasks for
-    no gain when all we do is set a handful of headers.
+    Deliberadamente no hereda de BaseHTTPMiddleware, que hace buffering a través de un
+    task group de anyio y rompe las respuestas en streaming y las tareas en segundo
+    plano, sin ganar nada cuando lo único que hacemos es fijar cuatro cabeceras.
     """
 
     def __init__(
@@ -80,8 +80,8 @@ class SecurityHeadersMiddleware:
 
         async def send_with_headers(message: Message) -> None:
             if message["type"] == "http.response.start":
-                # MutableHeaders replaces an existing header instead of appending a
-                # second copy of it, so these values always win and never duplicate.
+                # MutableHeaders reemplaza una cabecera existente en vez de añadir una
+                # segunda copia, así que estos valores siempre ganan y nunca se duplican.
                 headers = MutableHeaders(scope=message)
                 for name, value in BASE_HEADERS.items():
                     headers[name] = value

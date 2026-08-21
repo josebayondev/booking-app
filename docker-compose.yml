@@ -1,3 +1,6 @@
+# Entorno local: backend + Postgres juntos. Solo para desarrollo -- producción usa Render
+# y Neon, no este compose. Las credenciales de abajo son valores de desarrollo fijos, no
+# secretos: nunca tocan datos reales.
 services:
   postgres:
     image: postgres:18-alpine

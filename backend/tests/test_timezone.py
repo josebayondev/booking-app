@@ -1,3 +1,6 @@
+"""Tests de las conversiones de zona horaria, incluidos los dos cambios de hora del año:
+la hora que no existe en marzo y la que ocurre dos veces en octubre."""
+
 from datetime import UTC, date, datetime, time
 from zoneinfo import ZoneInfo
 
@@ -11,18 +14,19 @@ from app.core.timezone import (
 
 MADRID = ZoneInfo("Europe/Madrid")
 
-# The two Sundays a year the clocks move in the EU. Spelled out rather than computed
-# so the tests below assert against dates a human has checked.
-SPRING_FORWARD = date(2026, 3, 29)  # 02:00 CET -> 03:00 CEST, 02:00-02:59 never happens
-FALL_BACK = date(2026, 10, 25)  # 03:00 CEST -> 02:00 CET, 02:00-02:59 happens twice
+# Los dos domingos al año en que se mueve el reloj en la UE. Escritos a mano en vez de
+# calculados para que los tests de abajo comprueben contra fechas que ha verificado una
+# persona.
+SPRING_FORWARD = date(2026, 3, 29)  # 02:00 CET -> 03:00 CEST, las 02:00-02:59 no existen
+FALL_BACK = date(2026, 10, 25)  # 03:00 CEST -> 02:00 CET, las 02:00-02:59 pasan dos veces
 
 
 def test_ten_in_the_morning_stays_ten_in_the_morning() -> None:
-    """The reason availability rules store wall-clock time and not an instant.
+    """El motivo de que las reglas de disponibilidad guarden hora de pared y no un instante.
 
-    The same rule -- "10:00" -- lands on a different UTC instant in winter and in
-    summer. Had it been stored as 09:00Z, it would have drifted to 11:00 local once
-    summer time started.
+    La misma regla -- "10:00" -- cae en un instante UTC distinto en invierno y en verano. De
+    haberse guardado como 09:00Z, se habría desplazado a las 11:00 locales en cuanto
+    empezase el horario de verano.
     """
     assert local_to_utc(date(2026, 1, 15), time(10, 0), MADRID) == datetime(
         2026, 1, 15, 9, 0, tzinfo=UTC
@@ -33,12 +37,12 @@ def test_ten_in_the_morning_stays_ten_in_the_morning() -> None:
 
 
 def test_nonexistent_local_time_resolves_instead_of_raising() -> None:
-    """02:30 does not exist on the spring-forward day.
+    """Las 02:30 no existen el día en que se adelanta el reloj.
 
-    fold=0 reads it with the offset in force before the jump (CET, +1), so it lands
-    on the instant that is locally 03:30. Deterministic and documented: no realistic
-    working hours touch that hour, and raising would turn an impossible input into an
-    outage.
+    fold=0 las lee con el desfase vigente antes del salto (CET, +1), así que caen en el
+    instante que localmente son las 03:30. Determinista y documentado: ningún horario
+    laboral realista toca esa hora, y lanzar una excepción convertiría una entrada imposible
+    en una caída.
     """
     moment = local_to_utc(SPRING_FORWARD, time(2, 30), MADRID)
 
@@ -47,14 +51,15 @@ def test_nonexistent_local_time_resolves_instead_of_raising() -> None:
 
 
 def test_ambiguous_local_time_picks_the_first_pass() -> None:
-    """02:30 happens twice on the fall-back day; fold=0 means the earlier one (CEST)."""
+    """Las 02:30 pasan dos veces el día en que se atrasa el reloj; fold=0 elige la primera
+    (CEST)."""
     moment = local_to_utc(FALL_BACK, time(2, 30), MADRID)
 
     assert moment == datetime(2026, 10, 25, 0, 30, tzinfo=UTC)
 
 
 def test_late_evening_utc_belongs_to_the_next_local_day() -> None:
-    """Grouping slots by their UTC date would file this one under the wrong day."""
+    """Agrupar los huecos por su fecha UTC archivaría este en el día equivocado."""
     assert utc_to_local_date(datetime(2026, 9, 1, 22, 30, tzinfo=UTC), MADRID) == date(2026, 9, 2)
 
 
@@ -67,8 +72,8 @@ def test_local_day_bounds_span_a_whole_local_day() -> None:
 
 
 def test_local_day_bounds_follow_the_clock_change() -> None:
-    """A local day is not always 24 hours, which is why the bounds are derived from
-    both midnights instead of by adding a fixed 24 hours."""
+    """Un día local no siempre dura 24 horas, que es justo por lo que los límites se derivan
+    de las dos medianoches en vez de sumando 24 horas fijas."""
     spring_start, spring_end = local_day_bounds(SPRING_FORWARD, MADRID)
     fall_start, fall_end = local_day_bounds(FALL_BACK, MADRID)
 
@@ -77,8 +82,8 @@ def test_local_day_bounds_follow_the_clock_change() -> None:
 
 
 def test_everything_returned_is_timezone_aware() -> None:
-    """A single naive datetime escaping here would compare wrongly against every
-    aware one in the codebase, and the failure would surface far from the cause."""
+    """Un solo datetime naive que se escapase de aquí se compararía mal contra todos los
+    conscientes de zona del código, y el fallo saldría lejos de la causa."""
     assert utc_now().tzinfo is not None
     assert local_to_utc(date(2026, 9, 1), time(10, 0), MADRID).tzinfo is not None
 
@@ -88,6 +93,6 @@ def test_everything_returned_is_timezone_aware() -> None:
 
 
 def test_timezone_defaults_to_the_configured_one() -> None:
-    """Called without an explicit tz, the helpers read Settings.booking_timezone."""
+    """Llamados sin tz explícita, los helpers leen Settings.booking_timezone."""
     assert booking_timezone() == MADRID
     assert local_to_utc(date(2026, 1, 15), time(10, 0)) == datetime(2026, 1, 15, 9, 0, tzinfo=UTC)

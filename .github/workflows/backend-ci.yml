@@ -1,3 +1,5 @@
+# CI del backend: lint, tipos, migraciones, tests, build de la imagen y auditoría de
+# dependencias. Los jobs van encadenados, así que un fallo temprano ahorra el resto.
 name: Backend CI
 
 on:
@@ -35,9 +37,9 @@ jobs:
       - name: Detect backend changes
         id: filter
         run: |
-          # This workflow file counts as a backend change on purpose: without it
-          # a PR that only edits the CI skips every job, so a broken pipeline
-          # ships unnoticed and only surfaces on the next PR touching backend/.
+          # Este propio fichero cuenta como cambio de backend a propósito: sin eso,
+          # un PR que solo toque la CI se saltaría todos los jobs, y una pipeline
+          # rota pasaría desapercibida hasta el siguiente PR que tocase backend/.
           if git diff --name-only \
             "${{ github.event.pull_request.base.sha }}" \
             "${{ github.event.pull_request.head.sha }}" \
@@ -97,9 +99,9 @@ jobs:
       - name: Run mypy
         run: uv run mypy app
 
-  # Guards the gap between models and migrations: without this, adding a model
-  # or a column and forgetting to generate the migration passes CI, deploys to
-  # Render, and only fails in production against a table that does not exist.
+  # Vigila el hueco entre modelos y migraciones: sin esto, añadir un modelo o una
+  # columna y olvidarse de generar la migración pasa la CI, se despliega en Render
+  # y solo falla en producción contra una tabla que no existe.
   migrations:
     name: migrations
     needs: mypy
@@ -135,17 +137,17 @@ jobs:
           enable-cache: true
           cache-dependency-glob: "backend/uv.lock"
 
-      # No --extra dev: alembic is a runtime dependency and this job has no use
-      # for ruff, mypy or pytest.
+      # Sin --extra dev: alembic es dependencia de runtime y este job no tiene nada
+      # que hacer con ruff, mypy o pytest.
       - name: Install dependencies
         run: uv sync --frozen
 
-      # Replays every migration against an empty database, so a broken one is
-      # caught here instead of when migrate-production.yml hits Neon.
+      # Reproduce todas las migraciones sobre una base de datos vacía, así que una
+      # rota se caza aquí y no cuando migrate-production.yml llegue a Neon.
       - name: Apply migrations from an empty database
         run: uv run alembic upgrade head
 
-      # Compares Base.metadata against the schema the migrations just built.
+      # Compara Base.metadata contra el esquema que acaban de construir las migraciones.
       - name: Fail if models drifted from migrations
         run: uv run alembic check
 
@@ -187,12 +189,12 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen --extra dev
 
-      # Not redundant with the migrations job: jobs do not share service containers,
-      # so that job's schema died with it and this one starts on an empty database.
-      # The db-marked tests need the real tables, and building them from the migrations
-      # rather than from Base.metadata.create_all() means the suite runs against the
-      # schema production will actually have -- a migration that drifts from the models
-      # fails here as well as in `alembic check`.
+      # No es redundante con el job de migraciones: los jobs no comparten contenedores
+      # de servicio, así que el esquema de aquel murió con él y este empieza con una base
+      # de datos vacía. Los tests marcados con db necesitan las tablas de verdad, y
+      # construirlas desde las migraciones en vez de con Base.metadata.create_all()
+      # significa que la suite corre contra el esquema que tendrá producción -- una
+      # migración que se desvíe de los modelos falla aquí además de en `alembic check`.
       - name: Apply migrations
         run: uv run alembic upgrade head
 
@@ -214,13 +216,14 @@ jobs:
       - name: Build Docker image
         run: docker build -t booking-backend:ci .
 
-  # Checks the locked dependencies against the PyPI advisory database. Dependabot
-  # (.github/dependabot.yml) proposes upgrades weekly with a 7-day cooldown; this
-  # job is what stops an advisory from being ignored while that cadence catches up.
+  # Comprueba las dependencias bloqueadas contra la base de avisos de PyPI. Dependabot
+  # (.github/dependabot.yml) propone actualizaciones cada semana con 7 días de espera;
+  # este job es lo que impide que un aviso se ignore mientras esa cadencia va llegando.
   #
-  # It runs last on purpose: a new CVE can be published against an untouched
-  # lockfile, so this job can go red for reasons that have nothing to do with the
-  # PR. Putting it after the rest means that never delays lint or test feedback.
+  # Corre el último a propósito: puede publicarse un CVE nuevo contra un lockfile que
+  # nadie ha tocado, así que este job puede ponerse en rojo por motivos que no tienen
+  # nada que ver con el PR. Ponerlo detrás del resto hace que eso no retrase nunca el
+  # feedback de lint o de tests.
   pip-audit:
     name: pip-audit
     needs: docker-build
@@ -240,8 +243,8 @@ jobs:
           enable-cache: true
           cache-dependency-glob: "backend/uv.lock"
 
-      # --extra dev on purpose. The dev tools never reach the image, but they do
-      # execute here in CI, so a compromised one still matters.
+      # --extra dev a propósito. Las herramientas de desarrollo no llegan nunca a la
+      # imagen, pero sí se ejecutan aquí en CI, así que una comprometida sigue importando.
       - name: Install dependencies
         run: uv sync --frozen --extra dev
 

@@ -1,3 +1,5 @@
+"""Mixins reutilizables por los modelos. Hoy solo el de marcas de tiempo."""
+
 from datetime import datetime
 
 from sqlalchemy import DateTime, func
@@ -5,14 +7,15 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 
 class TimestampMixin:
-    """created_at / updated_at for any table that wants them.
+    """created_at / updated_at para cualquier tabla que los quiera.
 
-    Both are filled by the database (server_default / onupdate) rather than by Python,
-    so a row written from psql or from a data migration is stamped too -- those paths
-    never run the ORM.
+    Los rellena la base de datos (server_default / onupdate) y no Python, así que una fila
+    escrita desde psql o desde una migración de datos también queda marcada -- esos
+    caminos no pasan nunca por el ORM.
 
-    timezone=True maps to TIMESTAMPTZ. Every instant in this project is stored in UTC;
-    conversion to Europe/Madrid happens at the edges, in app/core/timezone.py.
+    timezone=True se traduce en TIMESTAMPTZ. Todos los instantes de este proyecto se
+    guardan en UTC; la conversión a Europe/Madrid ocurre en los bordes, en
+    app/core/timezone.py.
     """
 
     created_at: Mapped[datetime] = mapped_column(

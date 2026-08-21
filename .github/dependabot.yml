@@ -1,21 +1,23 @@
+# Dependabot: mantiene al día el lockfile de Python, los digests de las imágenes base y
+# los SHA de las actions. Semanal y con margen de espera antes de adoptar una release.
 version: 2
 updates:
-  # Python dependencies pinned in backend/uv.lock
+  # Dependencias de Python fijadas en backend/uv.lock
   - package-ecosystem: "uv"
     directory: "/backend"
     schedule:
       interval: "weekly"
-    # Only move uv.lock. The ranges in pyproject.toml state what the project is
-    # compatible with, so they should not churn every time a patch ships.
+    # Mover solo uv.lock. Los rangos de pyproject.toml declaran con qué es compatible
+    # el proyecto, así que no deberían bailar cada vez que sale un parche.
     versioning-strategy: lockfile-only
-    # Don't adopt a release the day it ships — leaves room for it to be yanked.
+    # No adoptar una release el día que sale — deja margen por si la retiran.
     cooldown:
       default-days: 7
     groups:
       python:
         patterns: ["*"]
 
-  # Base image digests in backend/Dockerfile
+  # Digests de las imágenes base en backend/Dockerfile
   - package-ecosystem: "docker"
     directory: "/backend"
     schedule:
@@ -23,16 +25,16 @@ updates:
     cooldown:
       default-days: 7
     ignore:
-      # Python 3.13 -> 3.14 is a semver *minor* bump, so blocking major alone
-      # would not catch it. Moving the runtime is a deliberate change:
-      # .python-version, requires-python, [tool.mypy], [tool.ruff] and the
-      # lockfile all have to move together. Only patch/digest updates here.
+      # De Python 3.13 a 3.14 es un salto *minor* en semver, así que bloquear solo
+      # major no lo cazaría. Mover el runtime es un cambio deliberado:
+      # .python-version, requires-python, [tool.mypy], [tool.ruff] y el lockfile
+      # tienen que moverse juntos. Aquí solo actualizaciones de parche/digest.
       - dependency-name: "python"
         update-types:
           - "version-update:semver-major"
           - "version-update:semver-minor"
 
-  # Action SHAs in .github/workflows/
+  # SHA de las actions en .github/workflows/
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

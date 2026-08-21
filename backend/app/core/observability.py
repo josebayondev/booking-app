@@ -1,3 +1,11 @@
+"""Integración con Sentry y limpieza de datos personales antes de enviarlos.
+
+Este repositorio es público y las reservas llevan datos personales, así que aquí se
+inicializa Sentry con `send_default_pii=False` y, sobre todo, se registra el gancho
+`before_send` que recorre cada evento redactando emails, teléfonos y cualquier valor
+bajo una clave sensible antes de que salga del proceso.
+"""
+
 import logging
 import re
 from typing import Any, cast
@@ -12,9 +20,9 @@ logger = logging.getLogger(__name__)
 
 REDACTED = "[redacted]"
 
-# Keys whose value is dropped whatever it looks like. Matched as a substring, so
-# "user_email" and "customer_phone" are covered. Bare "tel" is deliberately absent:
-# it would also redact "hotel", which in a booking system is real domain data.
+# Claves cuyo valor se descarta tenga la pinta que tenga. Se busca como subcadena, así
+# que "user_email" y "customer_phone" quedan cubiertos. "tel" a secas falta a propósito:
+# también redactaría "hotel", que en un sistema de reservas es dato de negocio real.
 SENSITIVE_KEY_PATTERN = re.compile(
     r"e?mail|phone|telefono|teléfono|m[oó]vil"
     r"|password|passwd|contrase[nñ]a|secret|token|authorization|api[_-]?key"
@@ -22,24 +30,24 @@ SENSITIVE_KEY_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-# Free text is the other half of the problem: an address interpolated into a log
-# message ("booking failed for ana@example.com") never passes through a key we
-# could recognise, so the values themselves have to be swept too.
+# El texto libre es la otra mitad del problema: una dirección interpolada en un mensaje
+# de log ("booking failed for ana@example.com") no pasa nunca por una clave que podamos
+# reconocer, así que hay que barrer también los propios valores.
 EMAIL_PATTERN = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 
-# Spanish numbers: nine digits starting 6-9, optional +34, optional separators.
-# The \b anchors stop it matching inside a longer run of digits, so timestamps,
-# ids and byte counts survive. Deliberately narrow — a loose pattern would redact
-# half of every traceback and make the events useless.
+# Números españoles: nueve dígitos que empiezan por 6-9, con +34 opcional y separadores
+# opcionales. Los anclajes \b impiden que enganche dentro de una tirada más larga de
+# dígitos, así que timestamps, ids y contadores de bytes sobreviven. Deliberadamente
+# estrecho: un patrón laxo redactaría media traza y dejaría los eventos inservibles.
 PHONE_PATTERN = re.compile(r"\b(?:\+34[ .-]?)?[6-9]\d{2}[ .-]?\d{3}[ .-]?\d{3}\b")
 
-# Events are nested but not infinitely: this only guards against a pathological
-# or cyclic structure turning one report into a hang.
+# Los eventos están anidados, pero no infinitamente: esto solo protege de que una
+# estructura patológica o cíclica convierta un informe en un cuelgue.
 MAX_SCRUB_DEPTH = 12
 
 
 def _scrub_value(value: Any, depth: int = 0) -> Any:
-    """Walk an event recursively, redacting by key name and by value shape."""
+    """Recorre un evento recursivamente, redactando por nombre de clave y por forma del valor."""
     if depth > MAX_SCRUB_DEPTH:
         return REDACTED
     if isinstance(value, dict):
@@ -61,22 +69,22 @@ def _scrub_value(value: Any, depth: int = 0) -> Any:
 
 
 def scrub_event(event: Event, hint: Hint) -> Event | None:
-    """Strip personal data from an event just before it leaves the process.
+    """Quita los datos personales de un evento justo antes de que salga del proceso.
 
-    send_default_pii=False already keeps Sentry from attaching request bodies,
-    headers, cookies and client IPs. What it cannot cover is the data we put in
-    ourselves: log messages, exception strings, and the local variables Sentry
-    captures from every stack frame. That is where a customer's email or phone
-    realistically leaks, so this sweeps the whole event.
+    send_default_pii=False ya evita que Sentry adjunte cuerpos de petición, cabeceras,
+    cookies e IPs de cliente. Lo que no puede cubrir son los datos que le metemos
+    nosotros: mensajes de log, textos de excepción y las variables locales que Sentry
+    captura de cada frame de la pila. Ahí es donde se escapa de verdad el email o el
+    teléfono de un cliente, así que esto barre el evento entero.
     """
     return cast("Event", _scrub_value(event))
 
 
 def configure_sentry(settings: Settings) -> None:
-    """Initialise Sentry when a DSN is configured, otherwise do nothing.
+    """Inicializa Sentry si hay DSN configurado y, si no, no hace nada.
 
-    Leaving SENTRY_DSN unset is the normal case locally and in CI, so this is a
-    no-op there instead of shipping events from a developer machine.
+    Dejar SENTRY_DSN sin definir es el caso normal en local y en CI, así que ahí esto es
+    un no-op en vez de ponerse a enviar eventos desde la máquina de un desarrollador.
     """
     if not settings.sentry_dsn:
         logger.info("Sentry disabled: SENTRY_DSN is not set")
@@ -86,23 +94,24 @@ def configure_sentry(settings: Settings) -> None:
         sentry_sdk.init(
             dsn=settings.sentry_dsn,
             environment=settings.environment,
-            # This is a public repo and bookings carry personal data: never attach
-            # request bodies, headers, cookies or client IP addresses to an event.
+            # Este repo es público y las reservas llevan datos personales: nunca adjuntar
+            # cuerpos de petición, cabeceras, cookies ni IPs de cliente a un evento.
             send_default_pii=False,
-            # send_default_pii only stops Sentry from collecting PII itself. It
-            # does nothing about PII we hand it in a log line or a local variable.
+            # send_default_pii solo impide que Sentry recoja PII por su cuenta. No hace
+            # nada con la PII que le pasamos nosotros en un log o en una variable local.
             before_send=scrub_event,
             integrations=[
-                # Breadcrumbs from INFO up, and one Sentry event per logging.error()
-                # call. These are the SDK defaults, spelled out so a future change to
-                # them cannot silently stop reporting errors.
+                # Migas de pan desde INFO hacia arriba, y un evento de Sentry por cada
+                # llamada a logging.error(). Son los valores por defecto del SDK, escritos
+                # explícitamente para que un cambio futuro en ellos no pueda dejar de
+                # reportar errores en silencio.
                 LoggingIntegration(level=logging.INFO, event_level=logging.ERROR),
             ],
         )
     except Exception:
-        # A malformed DSN raises BadDsn, and this runs at import time in main.py,
-        # so an unguarded failure kills the container. Losing telemetry is bad;
-        # refusing to serve requests because telemetry is misconfigured is worse.
+        # Un DSN mal formado lanza BadDsn, y esto corre en tiempo de import desde main.py,
+        # así que un fallo sin proteger mata el contenedor. Perder telemetría es malo;
+        # negarse a servir peticiones porque la telemetría está mal configurada es peor.
         logger.exception("Sentry init failed, continuing without it")
         return
 

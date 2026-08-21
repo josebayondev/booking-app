@@ -1,3 +1,6 @@
+"""Tests del middleware de cabeceras de seguridad: la CSP estricta frente a la relajada de
+/docs, el HSTS por entorno y que las cabeceras llegan también a un preflight de CORS."""
+
 import re
 
 import pytest
@@ -29,8 +32,8 @@ async def _already_framed(request: Request) -> JSONResponse:
 
 
 def build_client(*, hsts: bool = False) -> TestClient:
-    """A throwaway app wrapped in the middleware, so these tests do not depend on
-    how main.py happens to be wired, nor open a database connection."""
+    """Una app desechable envuelta en el middleware, para que estos tests no dependan de
+    cómo esté cableado main.py ni abran una conexión a base de datos."""
     routes = [
         Route(path, _ok)
         for path in ("/thing", "/docs", "/docs/oauth2-redirect", "/redoc", "/openapi.json")
@@ -58,7 +61,7 @@ def test_docs_routes_get_the_relaxed_csp(path: str) -> None:
     response = build_client().get(path)
 
     assert response.headers["content-security-policy"] == DOCS_CSP
-    # The relaxed policy only loosens what Swagger and ReDoc need; the rest holds.
+    # La política relajada solo afloja lo que Swagger y ReDoc necesitan; el resto se mantiene.
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.headers["x-frame-options"] == "DENY"
 
@@ -72,11 +75,11 @@ def test_docs_routes_get_the_relaxed_csp(path: str) -> None:
     ids=["swagger", "redoc"],
 )
 def test_docs_csp_allows_every_origin_the_docs_pages_load(html: str) -> None:
-    """Guards against FastAPI changing where it pulls its assets from: a new CDN
-    would silently render a blank docs page instead of failing loudly."""
+    """Protege frente a que FastAPI cambie de dónde se trae sus assets: un CDN nuevo
+    renderizaría una página de docs en blanco en silencio en vez de fallar de forma ruidosa."""
     origins = set(re.findall(r'(?:src|href)="(https://[^/"]+)', html))
 
-    assert origins, "the docs page stopped loading anything external, revisit DOCS_CSP"
+    assert origins, "la página de docs dejó de cargar nada externo, revisa DOCS_CSP"
     assert sorted(origin for origin in origins if origin not in DOCS_CSP) == []
 
 
@@ -114,7 +117,7 @@ def test_a_header_set_by_the_endpoint_is_replaced_not_duplicated() -> None:
 
 
 def test_real_app_sends_the_headers() -> None:
-    # No `with`: the lifespan (and its database check) is not needed here.
+    # Sin `with`: aquí no hace falta el lifespan (ni su chequeo de base de datos).
     response = TestClient(real_app).get("/health")
 
     assert response.status_code == 200
@@ -124,8 +127,8 @@ def test_real_app_sends_the_headers() -> None:
 
 
 def test_cors_preflight_also_carries_the_headers() -> None:
-    """CORSMiddleware answers preflights itself, without ever reaching the router, so
-    these headers appear only if the security middleware sits outside it."""
+    """CORSMiddleware contesta él mismo los preflight, sin llegar nunca al router, así que
+    estas cabeceras solo aparecen si el middleware de seguridad queda por fuera."""
     response = TestClient(real_app).options(
         "/health",
         headers={
@@ -141,9 +144,9 @@ def test_cors_preflight_also_carries_the_headers() -> None:
 
 
 def test_allowed_preflight_keeps_both_cors_and_security_headers() -> None:
-    """The accepted-origin half of the same property, wired like main.py does it:
-    CORS added first, security added last so it ends up outermost. Built here with
-    an explicit origin so the result does not depend on the ambient CORS_ORIGINS.
+    """La otra mitad de la misma propiedad, la del origen aceptado, cableada como lo hace
+    main.py: CORS añadido primero y seguridad el último para que acabe por fuera. Se monta
+    aquí con un origen explícito para que el resultado no dependa del CORS_ORIGINS ambiente.
     """
     origin = "https://front.example"
     inner = Starlette(routes=[Route("/thing", _ok)])

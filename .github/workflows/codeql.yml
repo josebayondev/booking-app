@@ -1,22 +1,26 @@
+# Análisis estático (SAST) del código Python con CodeQL, publicando en la pestaña
+# Security del repositorio.
+#
+# Configuración *avanzada* -- un fichero de workflow -- y no la configuración por
+# defecto de un clic que vive en los ajustes del repositorio. Esa por defecto vive en
+# la configuración del repo, así que no viaja: una app generada desde esta plantilla
+# empezaría su vida sin ningún análisis estático y sin enterarse. Este fichero se
+# versiona, se revisa y se hereda. Mismo razonamiento que usar la CLI de gitleaks en
+# vez de gitleaks-action en secret-scan.yml. No actives también la configuración por
+# defecto: las dos entran en conflicto.
 name: CodeQL
-
-# Advanced setup — a workflow file — rather than the one-click default setup in
-# the repository settings. Default setup lives in the repo's configuration, so it
-# does not travel: an app generated from this template would silently start life
-# without any static analysis. This file is versioned, reviewed and inherited.
-# Same reasoning as running the gitleaks CLI instead of gitleaks-action in
-# secret-scan.yml. Do not enable default setup as well: the two conflict.
 
 on:
   pull_request:
     branches: [main]
-  # Analysing main too gives the alerts a baseline to compare a PR against, which
-  # is what lets GitHub tell a newly introduced problem from a pre-existing one.
+  # Analizar también main da a las alertas una línea base contra la que comparar un
+  # PR, que es lo que permite a GitHub distinguir un problema recién introducido de
+  # uno que ya estaba.
   push:
     branches: [main]
-  # CodeQL ships new queries continuously, so code that was clean the day it
-  # merged can turn out to be vulnerable months later. Nothing else in this repo
-  # ever re-examines code that already landed.
+  # CodeQL publica consultas nuevas continuamente, así que código que estaba limpio
+  # el día que se mergeó puede resultar vulnerable meses después. Nada más en este
+  # repo vuelve a examinar código que ya aterrizó.
   schedule:
     - cron: "17 4 * * 1"
 
@@ -33,16 +37,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
-      # Needed to publish the findings to the repository's Security tab.
+      # Necesario para publicar los hallazgos en la pestaña Security del repositorio.
       security-events: write
       actions: read
       contents: read
     strategy:
       fail-fast: false
       matrix:
-        # javascript-typescript joins this list the day the frontend scaffold
-        # lands. It cannot be added ahead of time: CodeQL fails the run outright
-        # when a configured language has no source files to extract.
+        # javascript-typescript se une a esta lista el día que aterrice el andamiaje
+        # del frontend. No se puede añadir por adelantado: CodeQL tumba la ejecución
+        # entera cuando un lenguaje configurado no tiene ficheros que extraer.
         language: [python]
     steps:
       - name: Checkout
@@ -50,8 +54,8 @@ jobs:
         with:
           persist-credentials: false
 
-      # No autobuild step and no dependency install: Python is analysed straight
-      # from source, and CodeQL resolves what it needs on its own.
+      # Sin paso de autobuild y sin instalar dependencias: Python se analiza
+      # directamente desde el código fuente y CodeQL resuelve solo lo que necesita.
       - name: Initialise CodeQL
         uses: github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4
         with:

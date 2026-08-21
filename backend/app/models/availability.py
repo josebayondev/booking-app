@@ -1,16 +1,16 @@
-"""The two halves of "when can I be booked".
+"""Las dos mitades de "cuándo se me puede reservar".
 
-They are deliberately stored in different types, and the column names say so:
+Están guardadas a propósito en tipos distintos, y los nombres de las columnas lo dicen:
 
-- AvailabilityRule.starts_at_local is a naive TIME plus a weekday. "Mondays from 10:00"
-  is an intention that must still mean 10:00 in January and in July; stored as an
-  instant, the twice-yearly clock change would move it.
-- AvailabilityException.starts_at is a TIMESTAMPTZ. "Blocked from the 15th to the 30th
-  of August" is a concrete stretch of the timeline, not a recurring intention.
+- AvailabilityRule.starts_at_local es un TIME naive más un día de la semana. "Los lunes a
+  partir de las 10:00" es una intención que tiene que seguir significando las 10:00 en
+  enero y en julio; guardada como un instante, el cambio de hora semestral la movería.
+- AvailabilityException.starts_at es un TIMESTAMPTZ. "Bloqueado del 15 al 30 de agosto" es
+  un tramo concreto de la línea temporal, no una intención recurrente.
 
-The projection from the first to the second lives in app/core/timezone.py:
-local_to_utc() turns a rule into real instants on a given date, and local_day_bounds()
-is what "block the whole of the 15th" actually means once written down.
+La proyección de lo primero a lo segundo vive en app/core/timezone.py: local_to_utc()
+convierte una regla en instantes reales de una fecha dada, y local_day_bounds() es lo que
+significa de verdad "bloquear el 15 entero" una vez escrito.
 """
 
 from datetime import datetime, time
@@ -23,68 +23,70 @@ from app.models.mixins import TimestampMixin
 
 
 class AvailabilityRule(TimestampMixin, Base):
-    """One recurring block of the working week, in the owner's local wall clock.
+    """Un bloque recurrente de la semana laboral, en el reloj de pared local del dueño.
 
-    Ten rows in practice: Monday to Friday, mornings and afternoons. There is no
-    appointment_type_id -- one owner, one calendar, so the schedule is global and every
-    kind of meeting is carved out of the same hours.
+    En la práctica, diez filas: de lunes a viernes, mañanas y tardes. No hay
+    appointment_type_id -- un dueño y un calendario, así que el horario es global y cada
+    tipo de reunión se recorta sobre las mismas horas.
     """
 
     __tablename__ = "availability_rule"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    # 0 = Monday, matching date.weekday(), so projecting a rule onto a date needs no
-    # arithmetic. Postgres' own EXTRACT(DOW) is 0 = Sunday; nothing here uses it.
+    # 0 = lunes, igual que date.weekday(), así que proyectar una regla sobre una fecha no
+    # necesita ninguna aritmética. El EXTRACT(DOW) de Postgres es 0 = domingo; aquí no se
+    # usa en ningún sitio.
     weekday: Mapped[int] = mapped_column()
-    # TIME WITHOUT TIME ZONE. The _local suffix is a warning that this is not an instant
-    # and must not be compared against one directly.
+    # TIME WITHOUT TIME ZONE. El sufijo _local es un aviso de que esto no es un instante y
+    # no se puede comparar directamente contra uno.
     starts_at_local: Mapped[time] = mapped_column(Time)
     ends_at_local: Mapped[time] = mapped_column(Time)
     is_active: Mapped[bool] = mapped_column(default=True, server_default=text("true"))
 
     __table_args__ = (
         CheckConstraint("weekday BETWEEN 0 AND 6", name="weekday_range"),
-        # Also rules out a block crossing midnight ("22:00-02:00"), which is correct for
-        # professional working hours and keeps the projection from having to split a
-        # rule across two calendar days.
+        # Descarta también un bloque que cruce la medianoche ("22:00-02:00"), que es lo
+        # correcto para un horario profesional y evita que la proyección tenga que partir
+        # una regla en dos días naturales.
         CheckConstraint("ends_at_local > starts_at_local", name="local_range_ordered"),
-        # The natural key, which is what lets the seed insert only what is missing.
-        # Overlapping blocks on the same weekday (10-14 and 12-16) are still allowed:
-        # they produce the union of the slots, which is harmless, and forbidding them
-        # would mean an EXCLUDE constraint and the btree_gist extension for nothing.
+        # La clave natural, que es lo que permite al seed insertar solo lo que falta. Los
+        # bloques solapados el mismo día (10-14 y 12-16) siguen permitidos: producen la
+        # unión de los huecos, que es inofensiva, y prohibirlos exigiría una restricción
+        # EXCLUDE y la extensión btree_gist para nada.
         UniqueConstraint("weekday", "starts_at_local"),
     )
 
-    # No index. This table holds ten rows; a sequential scan is the right plan and an
-    # index would only be one more thing for a migration to keep in step.
+    # Sin índice. Esta tabla tiene diez filas; un escaneo secuencial es el plan correcto y
+    # un índice solo sería una cosa más que mantener al día en cada migración.
 
     def __repr__(self) -> str:
         return f"<AvailabilityRule {self.weekday} {self.starts_at_local}-{self.ends_at_local}>"
 
 
 class AvailabilityException(TimestampMixin, Base):
-    """A one-off override of the weekly schedule, as a real UTC interval.
+    """Una excepción puntual al horario semanal, como intervalo UTC real.
 
-    is_available carries both directions on purpose:
+    is_available lleva las dos direcciones a propósito:
 
-    - False -- a block: a holiday, a trip, an afternoon off. This is the common case.
-    - True  -- an extra opening outside the weekly rules: a Saturday morning agreed with
-      a particular client.
+    - False -- un bloqueo: un festivo, un viaje, una tarde libre. Es el caso habitual.
+    - True  -- una apertura extra fuera de las reglas semanales: un sábado por la mañana
+      acordado con un cliente concreto.
 
-    Both from day one because it is a single boolean; adding the second direction later
-    would be a migration.
+    Ambas desde el primer día porque es un único booleano; añadir la segunda dirección más
+    tarde sería una migración.
     """
 
     __tablename__ = "availability_exception"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    # Indexed because the availability query filters exceptions by an overlap against
-    # the requested window, and this is the side it can seek on.
+    # Indexada porque la consulta de disponibilidad filtra las excepciones por solape
+    # contra la ventana pedida, y este es el lado por el que puede buscar.
     starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     is_available: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
-    # Administration only -- "Medico", "Vacaciones". It must never appear in a public
-    # response: the booking page is told that a slot is unavailable, never why.
+    # Solo para administración -- "Médico", "Vacaciones". No puede aparecer nunca en una
+    # respuesta pública: a la página de reservas se le dice que un hueco no está libre,
+    # nunca por qué.
     reason: Mapped[str | None] = mapped_column(String(200), default=None)
 
     __table_args__ = (CheckConstraint("ends_at > starts_at", name="range_ordered"),)

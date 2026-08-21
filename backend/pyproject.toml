@@ -1,3 +1,5 @@
+# Metadatos, dependencias y configuración de herramientas del backend.
+# Las versiones exactas las fija uv.lock, que se commitea junto a este fichero.
 [project]
 name = "booking-app-backend"
 version = "0.1.0"
@@ -42,9 +44,9 @@ strict = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# --strict-markers turns a mistyped marker into an error instead of a warning nobody
-# reads, which is exactly the failure mode that makes a marker useless.
+# --strict-markers convierte un marcador mal escrito en un error en vez de en un aviso
+# que no lee nadie, que es justo el modo de fallo que hace inútil a un marcador.
 addopts = "-ra --strict-markers --strict-config"
 markers = [
-    "db: needs a reachable PostgreSQL (docker compose up -d postgres)",
+    "db: necesita un PostgreSQL accesible (docker compose up -d postgres)",
 ]

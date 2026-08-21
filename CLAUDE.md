@@ -1,74 +1,94 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Este fichero guía a Claude Code (claude.ai/code) cuando trabaja con el código de este
+repositorio.
 
-## Communicating with Claude Code
+## Idioma
 
-Always respond to the developer in **Spanish**, regardless of the language of his message.
-This is about chat responses only — it does not change the "Conventions" section below
-(code, branch names and commit messages stay in English).
+Todo lo que escribas va en **español**: las respuestas del chat, los comentarios de
+código, los docstrings, los mensajes de error de los tests que expliquen algo, este mismo
+fichero y cualquier documentación interna. Da igual en qué idioma esté el mensaje del
+desarrollador.
 
-## Project
+Las cuatro excepciones, y no hay más:
 
-Appointment booking system. Monorepo: `backend/` (FastAPI + SQLAlchemy + Alembic) and
-`frontend/` (React + Vite + TypeScript). Public booking has no login; the admin panel is
-authenticated. Backend deploys to Render, frontend to Vercel, database is Neon Postgres.
+- **`README.md`** se queda en inglés (es la cara pública del repositorio).
+- **Los identificadores del código** —nombres de funciones, variables, clases, columnas,
+  rutas— siguen en inglés.
+- **Los nombres de rama y los mensajes de commit** siguen en inglés (ver "Convenciones").
+- **Los mensajes de `logger.*` de la aplicación** siguen en inglés: son salida operativa
+  que acaba en Sentry y en los logs de Render, y hay tests que comprueban sus subcadenas.
+  Esto **no** incluye los mensajes de `assert` ni de `pytest.fail`, que explican algo a
+  quien está desarrollando y por tanto van en español.
 
-`frontend/` is currently an empty placeholder (no scaffold yet). `backend/` has the app
-skeleton (`FastAPI` instance, `/health`, settings, Docker) plus a CI workflow
-(`.github/workflows/backend-ci.yml`), but no SQLAlchemy models or Alembic setup yet —
-those land in later FEATs. There is no frontend CI yet either (FEAT 4.2).
+Además, **cada fichero empieza con una explicación corta y clara de lo que hace**: un
+docstring de módulo en Python, un comentario de cabecera en YAML, Dockerfile, `.ini` o
+`.env.example`. Corta de verdad: una o dos frases que digan para qué existe el fichero,
+no un resumen de su contenido.
 
-## Commands you must NOT run
+## Proyecto
 
-The developer runs these himself. Write the code and the files, then stop and tell him
-what to run — never execute them yourself:
+Sistema de reserva de citas. Monorepo: `backend/` (FastAPI + SQLAlchemy + Alembic) y
+`frontend/` (React + Vite + TypeScript). La reserva pública no tiene login; el panel de
+administración sí está autenticado. El backend despliega en Render, el frontend en Vercel,
+y la base de datos es Neon Postgres.
+
+`frontend/` es todavía un hueco vacío (sin andamiaje). `backend/` tiene el esqueleto de la
+aplicación (instancia de `FastAPI`, `/health`, configuración, Docker), Alembic con sus
+migraciones, los modelos de configuración de dominio (tipos de cita y disponibilidad) y su
+seed, más los workflows de CI. Todavía no hay CI de frontend en marcha: los jobs están
+escritos pero dormidos hasta que exista `frontend/package.json`.
+
+## Comandos que NO debes ejecutar
+
+Estos los ejecuta el desarrollador. Escribe el código y los ficheros, y después párate y
+dile qué tiene que ejecutar — no los lances tú nunca:
 
 - `git add`, `git commit`, `git push`, `git merge`, `git rebase`, `git reset`
-- **Any `alembic` command**, including `revision`, `revision --autogenerate`, `upgrade`
-  and `downgrade`. Do not create or edit migration files under `alembic/versions/` either
-  — the developer generates and reviews every migration himself.
-- Any command that deploys, or that writes to a remote database
+- **Cualquier comando `alembic`**, incluidos `revision`, `revision --autogenerate`,
+  `upgrade` y `downgrade`. Tampoco crees ni edites ficheros de migración dentro de
+  `alembic/versions/` — el desarrollador genera y revisa él mismo cada migración.
+- Cualquier comando que despliegue, o que escriba en una base de datos remota
 
-You may read git state (`git status`, `git diff`, `git log`).
+Sí puedes leer el estado de git (`git status`, `git diff`, `git log`).
 
-When a change requires a migration, say so explicitly and describe what the migration
-should contain — then stop.
+Cuando un cambio requiera una migración, dilo explícitamente y describe qué debería
+contener esa migración — y ahí párate.
 
-## Backend commands
+## Comandos del backend
 
-Run from `backend/`:
+Se ejecutan desde `backend/`:
 
-Dependencies are managed with **uv**, and `uv.lock` is committed — it pins every
-transitive dependency, so local, CI and the Docker image all install identical versions.
-Install uv with `brew install uv` (or `pip install uv` inside the venv).
+Las dependencias se gestionan con **uv**, y `uv.lock` está commiteado — fija cada
+dependencia transitiva, así que local, CI y la imagen de Docker instalan versiones
+idénticas. uv se instala con `brew install uv` (o `pip install uv` dentro del venv).
 
 ```bash
-uv sync --extra dev             # create/update .venv from uv.lock (exact versions)
-uv run uvicorn app.main:app --reload   # dev server: http://localhost:8000, docs at /docs
+uv sync --extra dev             # crea/actualiza .venv desde uv.lock (versiones exactas)
+uv run uvicorn app.main:app --reload   # servidor de desarrollo: http://localhost:8000, docs en /docs
 uv run ruff check .             # lint
-uv run ruff format .            # format
-uv run mypy app                 # type check (strict mode)
-uv run pytest                   # tests (needs Postgres: docker compose up -d postgres)
-uv run pytest -m "not db"       # the subset that needs no database
-uv run pip-audit                # audit locked deps against the PyPI advisory database
+uv run ruff format .            # formato
+uv run mypy app                 # tipos (modo estricto)
+uv run pytest                   # tests (necesita Postgres: docker compose up -d postgres)
+uv run pytest -m "not db"       # el subconjunto que no necesita base de datos
+uv run pip-audit                # audita las deps bloqueadas contra la base de avisos de PyPI
 ```
 
-Changing dependencies — always commit the resulting `uv.lock` in the same PR:
+Al cambiar dependencias — commitea siempre el `uv.lock` resultante en el mismo PR:
 
 ```bash
-uv add <package>                # add a runtime dependency (updates pyproject + lock)
-uv add --optional dev <package> # add a dev dependency
-uv lock --upgrade               # refresh every pin to the latest allowed version
+uv add <paquete>                # añade una dependencia de runtime (actualiza pyproject + lock)
+uv add --optional dev <paquete> # añade una dependencia de desarrollo
+uv lock --upgrade               # refresca cada pin a la última versión permitida
 ```
 
-Note that `uv sync` makes the venv match the lock exactly, so it removes anything not
-in it. CI and Docker use `uv sync --frozen`, which fails instead of re-resolving when
-`uv.lock` is out of sync with `pyproject.toml`.
+Ojo: `uv sync` deja el venv exactamente igual que el lock, así que borra todo lo que no
+esté en él. CI y Docker usan `uv sync --frozen`, que falla en vez de volver a resolver
+cuando `uv.lock` no está en sintonía con `pyproject.toml`.
 
-## Frontend commands
+## Comandos del frontend
 
-Run from `frontend/` once the scaffold exists:
+Se ejecutan desde `frontend/` cuando exista el andamiaje:
 
 ```bash
 npm install
@@ -76,140 +96,163 @@ cp .env.example .env
 npm run dev
 ```
 
-## Docker / local environment
+## Docker / entorno local
 
 ```bash
-docker compose up --build       # from repo root: backend + local postgres together
-docker build -t booking-backend ./backend   # backend image alone
+docker compose up --build       # desde la raíz del repo: backend + postgres local juntos
+docker build -t booking-backend ./backend   # solo la imagen del backend
 ```
 
-Local Postgres credentials in `docker-compose.yml` (`postgres`/`postgres`/`booking_app`)
-are fixed dev-only values, not secrets — they never touch real data and don't apply to
-Neon (staging/production).
+Las credenciales del Postgres local de `docker-compose.yml`
+(`postgres`/`postgres`/`booking_app`) son valores fijos de desarrollo, no secretos — no
+tocan nunca datos reales y no aplican a Neon (staging/producción).
 
-## Architecture
+## Arquitectura
 
-- **Settings**: `app/core/config.py` — a `pydantic-settings` `Settings` class, cached via
-  `get_settings()` (`lru_cache`), reads `.env`. Add new env-driven config here. Which file
-  it reads comes from `ENV_FILE` (default `.env`); setting it to an empty string means
-  "read no file", which is how the test suite opts out — see the Testing bullet below.
-  `ENV_FILE` is deliberately **not** in `.env.example`: it is the variable that chooses
-  that file.
-- **Database**: `app/core/db.py` holds the SQLAlchemy `engine` (built from
-  `settings.database_url`, driver forced to `postgresql+psycopg` via `URL.set()`, with
-  `pool_pre_ping=True` since Neon suspends idle compute), the `SessionLocal` session
-  factory, and the `get_db()` generator dependency for use with FastAPI's `Depends()`.
-  `app/main.py` registers a `lifespan` context manager that calls `check_db_connection()`
-  (`app/core/db.py`) — `engine.connect()` + `SELECT 1`, no ORM session — at startup, and
-  fails fast (raises) if the DB is unreachable.
-- **Routing**: routers live under `app/api/` (e.g. `health.py`) and are registered on the
-  `FastAPI` app in `main.py` via `app.include_router(...)`.
-- **Security headers**: `app/core/security_headers.py` holds `SecurityHeadersMiddleware`, a
-  pure ASGI middleware (not `BaseHTTPMiddleware`) that stamps `X-Content-Type-Options`,
-  `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` and a CSP onto every response.
-  The CSP is `default-src 'none'` everywhere — this API only returns JSON — except on
-  `/docs`, `/docs/oauth2-redirect` and `/redoc`, which get a relaxed policy so Swagger UI
-  and ReDoc still load their CDN assets. `Strict-Transport-Security` is sent whenever
-  `environment != "local"`: Render terminates TLS and speaks HTTP to the container, so the
-  request scheme cannot be used to decide, and sending HSTS over `http://localhost` would
-  poison the browser's HSTS cache for every other local project. It is registered **last**
-  in `main.py`, which makes it the outermost middleware, so CORS preflight responses —
-  which `CORSMiddleware` answers without reaching the router — carry the headers too.
-- `app/models/` and `app/schemas/` are empty scaffolding for SQLAlchemy models and
-  Pydantic schemas respectively.
-- **Testing**: `backend/tests/conftest.py` isolates the suite from the environment before
-  anything imports `app.*` — it empties `ENV_FILE`, defaults `DATABASE_URL` to the
-  docker-compose Postgres (via `setdefault`, so CI's own value still wins), pins
-  `CORS_ORIGINS` to `TEST_CORS_ORIGIN`, and forces `SENTRY_DSN` empty so a test run can
-  never reach the real Sentry project. The ordering is load-bearing: `app/core/db.py` and
-  `app/main.py` call `get_settings()` at import time and `lru_cache` freezes the result,
-  so no fixture can correct it afterwards — which is why nothing in `conftest.py` imports
-  `app.*` at module level. Without it, `uv run pytest` picks up `backend/.env` and runs
-  against the Neon dev branch. Fixtures: `db_session` (a session inside a transaction that
-  is rolled back afterwards, so even a `commit()` in the test is undone),
-  `client`/`running_client` (the real app without/with its lifespan, i.e. without/with a
-  database connection) and `clean_env`. Tests needing a live database carry
-  `@pytest.mark.db`. Note `alembic/env.py` still reads `.env` on purpose: you do want
-  `alembic upgrade head` to migrate the database you have configured.
-- **Docker build**: `backend/Dockerfile` is a two-stage build — `builder` installs the
-  locked dependencies into a venv at `/opt/venv` (via `uv sync --frozen
-  --no-install-project`, so only `pyproject.toml` + `uv.lock` are copied and dependency
-  installs aren't invalidated by every code change); `runtime` copies that venv plus the
-  `app/` source straight from the build context. The project itself is deliberately never
-  installed as a package — `app` is importable because it sits in the working directory.
-  Runs as a non-root user, and honors `$PORT` (falling back to 8000) for Render, whose CMD
-  uses shell form so the env var expands.
-- **Pinning**: both stages pin `python:3.13-slim` by digest, and the uv binary comes from
-  a digest-pinned `ghcr.io/astral-sh/uv` image — same reasoning as pinning GitHub Actions
-  by SHA. Dependabot (`.github/dependabot.yml`) keeps the lockfile, the image digests and
-  the action SHAs up to date.
-- `docker-compose.yml` (repo root) wires `backend` + `postgres` together for local dev
-  only — production uses Render + Neon instead, not this compose file.
+- **Configuración**: `app/core/config.py` — una clase `Settings` de `pydantic-settings`,
+  cacheada con `get_settings()` (`lru_cache`), que lee `.env`. Cualquier configuración
+  nueva dirigida por entorno va aquí. Qué fichero lee viene de `ENV_FILE` (por defecto
+  `.env`); ponerlo a cadena vacía significa "no leas ningún fichero", que es como se sale
+  la suite de tests — ver el punto de Tests más abajo. `ENV_FILE` deliberadamente **no**
+  está en `.env.example`: es justo la variable que elige ese fichero.
+- **Base de datos**: `app/core/db.py` tiene el `engine` de SQLAlchemy (construido desde
+  `settings.database_url`, con el driver forzado a `postgresql+psycopg` vía `URL.set()` y
+  `pool_pre_ping=True` porque Neon suspende el cómputo inactivo), la fábrica de sesiones
+  `SessionLocal` y la dependencia generadora `get_db()` para usar con el `Depends()` de
+  FastAPI. `app/main.py` registra un context manager `lifespan` que llama a
+  `check_db_connection()` (`app/core/db.py`) — `engine.connect()` + `SELECT 1`, sin sesión
+  del ORM — al arrancar, con reintentos y espera creciente, y falla rápido (lanza) si la
+  base de datos es inalcanzable.
+- **Zonas horarias**: `app/core/timezone.py` es el único sitio donde se convierte entre el
+  reloj de pared local del dueño y UTC. Las reglas de disponibilidad guardan un `TIME`
+  naive más un día de la semana; `local_to_utc()` las proyecta sobre una fecha concreta, y
+  `local_day_bounds()` da los límites UTC de un día natural local. Los casos límite del
+  cambio de hora están fijados por tests.
+- **Rutas**: los routers viven en `app/api/` (por ejemplo `health.py`) y se registran en la
+  app `FastAPI` desde `main.py` con `app.include_router(...)`.
+- **Cabeceras de seguridad**: `app/core/security_headers.py` tiene
+  `SecurityHeadersMiddleware`, un middleware ASGI puro (no `BaseHTTPMiddleware`) que estampa
+  `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` y una
+  CSP en todas las respuestas. La CSP es `default-src 'none'` en todas partes — esta API
+  solo devuelve JSON — salvo en `/docs`, `/docs/oauth2-redirect` y `/redoc`, que reciben una
+  política relajada para que Swagger UI y ReDoc sigan cargando sus assets del CDN.
+  `Strict-Transport-Security` se envía siempre que `environment != "local"`: Render termina
+  el TLS y habla HTTP con el contenedor, así que no se puede decidir por el esquema de la
+  petición, y mandar HSTS por `http://localhost` envenenaría la caché HSTS del navegador
+  para cualquier otro proyecto local. Se registra **el último** en `main.py`, lo que lo
+  convierte en el middleware más externo, así que las respuestas de preflight de CORS — que
+  `CORSMiddleware` contesta sin llegar al router — también llevan las cabeceras.
+- **Modelos**: `app/models/` tiene la `Base` declarativa con su convención de nombres, el
+  `TimestampMixin` y los modelos de configuración de dominio (`AppointmentType`,
+  `AvailabilityRule`, `AvailabilityException`). Todo modelo nuevo **tiene que** importarse
+  en `app/models/__init__.py`: el autogenerate de Alembic solo ve las tablas cuyo módulo se
+  ha importado, y si falta escribe una migración vacía sin avisar. `app/schemas/` sigue
+  siendo andamiaje vacío para los esquemas Pydantic.
+- **Seed**: `app/seed.py` inserta la configuración inicial (un tipo de cita y diez bloques
+  de disponibilidad). Es idempotente por clave natural y **no actualiza filas existentes**:
+  son los valores desde los que arranca una base de datos nueva, no valores que el seed
+  mantenga a la fuerza.
+- **Tests**: `backend/tests/conftest.py` aísla la suite del entorno antes de que nada
+  importe `app.*` — vacía `ENV_FILE`, pone `DATABASE_URL` por defecto al Postgres de
+  docker-compose (con `setdefault`, así que el valor propio de CI sigue ganando), fija
+  `CORS_ORIGINS` a `TEST_CORS_ORIGIN` y fuerza `SENTRY_DSN` vacío para que una ejecución de
+  tests no pueda llegar nunca al proyecto real de Sentry. El orden es crítico:
+  `app/core/db.py` y `app/main.py` llaman a `get_settings()` en tiempo de import y
+  `lru_cache` congela el resultado, así que ninguna fixture puede corregirlo después — por
+  eso nada de `conftest.py` importa `app.*` a nivel de módulo. Sin esto, `uv run pytest`
+  cogería `backend/.env` y correría contra la rama de desarrollo de Neon. Fixtures:
+  `db_session` (una sesión dentro de una transacción que se deshace después, así que hasta
+  un `commit()` del test se revierte, y que además vacía las tablas antes de empezar),
+  `client`/`running_client` (la app real sin/con su lifespan, o sea sin/con conexión a base
+  de datos) y `clean_env`. Los tests que necesitan una base de datos viva llevan
+  `@pytest.mark.db`. Ojo: `alembic/env.py` sí lee `.env` a propósito — lo que quieres es que
+  `alembic upgrade head` migre la base de datos que tengas configurada.
+- **Build de Docker**: `backend/Dockerfile` es un build en dos etapas — `builder` instala
+  las dependencias bloqueadas en un venv en `/opt/venv` (con `uv sync --frozen
+  --no-install-project`, así que solo se copian `pyproject.toml` + `uv.lock` y la instalación
+  de dependencias no se invalida con cada cambio de código); `runtime` copia ese venv más el
+  código de `app/` directamente del contexto de build. El proyecto en sí deliberadamente no
+  se instala nunca como paquete — `app` es importable porque está en el directorio de
+  trabajo. Corre como usuario sin privilegios y respeta `$PORT` (con 8000 de reserva) para
+  Render, y por eso su CMD usa forma shell, para que la variable se expanda.
+- **Fijado de versiones**: las dos etapas fijan `python:3.13-slim` por digest, y el binario
+  de uv viene de una imagen `ghcr.io/astral-sh/uv` fijada por digest — mismo razonamiento
+  que fijar las GitHub Actions por SHA. Dependabot (`.github/dependabot.yml`) mantiene al
+  día el lockfile, los digests de las imágenes y los SHA de las actions.
+- `docker-compose.yml` (raíz del repo) une `backend` + `postgres` solo para desarrollo local
+  — producción usa Render + Neon, no este compose.
 
-## Conventions
+## Convenciones
 
-- Code, branch names and commit messages in **English**. UI text and emails in **Spanish**.
-- Conventional Commits: `feat:`, `fix:`, `chore:`, `docs:`, `test:`, `refactor:` — keep
-  commit messages to a single line.
-- Type hints everywhere in Python. Strict TypeScript in the frontend.
+- **Comentarios, docstrings y documentación interna en español** (ver la sección "Idioma").
+- Identificadores del código, nombres de rama y mensajes de commit en **inglés**. Textos de
+  interfaz y emails en **español**.
+- Conventional Commits: `feat:`, `fix:`, `chore:`, `docs:`, `test:`, `refactor:` — mensajes
+  de commit de una sola línea.
+- Type hints en todo el Python. TypeScript estricto en el frontend.
 
-## Git workflow
+## Flujo de git
 
-- Trunk-based. `main` is protected — direct pushes are rejected by GitHub.
-- Branches: `feature/<name>`, `fix/<name>`, `chore/<name>`, branched off `main`.
-- All changes go through a PR. Squash merge only.
+- Trunk-based. `main` está protegida — GitHub rechaza los push directos.
+- Ramas: `feature/<nombre>`, `fix/<nombre>`, `chore/<nombre>`, salidas de `main`.
+- Todo cambio pasa por un PR. Solo squash merge.
 
-## Architecture decisions
+## Decisiones de arquitectura
 
-Do not propose or add infrastructure beyond this without being asked:
+No propongas ni añadas infraestructura más allá de esto sin que te lo pidan:
 
-- **No** Redis, message broker, Kubernetes, service workers, or microservices.
-- Public booking has **no login**. Access to a booking is via an opaque token
-  (`secrets.token_urlsafe(32)`), never a sequential ID — this prevents IDOR.
-- Admin panel is authenticated: single role, enforced with a reusable `require_role`
-  dependency via `Depends()`. Frontend handles UI visibility only.
-- Migrations with Alembic, applied on deploy — never at application startup.
-- All timestamps stored in **UTC**; convert at the boundary.
-- Backend runs on Render free tier — cold start (~40s) is handled in the UI, not by paying.
+- **Nada** de Redis, brokers de mensajes, Kubernetes, service workers ni microservicios.
+- La reserva pública **no tiene login**. El acceso a una reserva es por token opaco
+  (`secrets.token_urlsafe(32)`), nunca por un ID secuencial — así se evita el IDOR.
+- El panel de administración está autenticado: un solo rol, aplicado con una dependencia
+  reutilizable `require_role` vía `Depends()`. El frontend solo gestiona la visibilidad de
+  la interfaz.
+- Migraciones con Alembic, aplicadas al desplegar — nunca al arrancar la aplicación.
+- Todas las marcas de tiempo se guardan en **UTC**; la conversión ocurre en los bordes.
+- El backend corre en el plan gratuito de Render — el arranque en frío (~40 s) se gestiona
+  en la interfaz, no pagando.
 
-## Security
+## Seguridad
 
-This is a **public repository**.
+Este es un **repositorio público**.
 
-- Never commit secrets. All configuration through environment variables.
-  `.env` is gitignored; `.env.example` is committed with placeholder values.
-- Secret scanning: `gitleaks` runs on every PR (`.github/workflows/secret-scan.yml`) over
-  the **full** git history, so a secret that ever landed keeps failing CI until it is
-  purged from history — not just removed in a later commit. It runs the MIT CLI from a
-  digest-pinned image instead of `gitleaks-action`, which requires a paid licence for
-  org-owned repositories. Dependabot does not track that digest; bump it by hand.
-- SAST: CodeQL analyses the Python source on every PR, on pushes to `main` and weekly
-  (`.github/workflows/codeql.yml`), publishing to the Security tab. Deliberately the
-  *advanced* setup — a committed workflow — and not the one-click default setup, which
-  lives in repository settings and so would not be inherited by an app generated from
-  this template. Never enable both: they conflict.
-- Dependency scanning: `pip-audit` gates every backend PR and `npm audit
-  --audit-level=high` every frontend PR. Dependabot proposes the upgrades; these jobs
-  are what stop an advisory from being ignored while that weekly cadence catches up.
-  The npm one is dormant until `frontend/package.json` exists — see the `changes` guard
-  in `frontend-ci.yml`.
-- CORS: explicit origin allow-list per environment. Never `*` combined with credentials.
-  `Settings.cors_origins` defaults to an empty list, so an environment that forgets
-  `CORS_ORIGINS` allows nothing instead of falling back to a developer's localhost.
-  Local setups declare it in `.env` / `docker-compose.yml`.
-- Sentry: `send_default_pii=False`, plus a `before_send` hook — `scrub_event` in
-  `app/core/observability.py` — that walks the whole event redacting values under
-  sensitive key names and any email or Spanish phone number found in free text.
-  `send_default_pii=False` only stops Sentry from collecting PII itself; it does nothing
-  about PII the app hands it in a log message or a captured local variable, which is
-  where it realistically leaks. Events are always scrubbed, never dropped.
-- Rate limiting on public endpoints (booking creation).
-- Security headers: HSTS, X-Content-Type-Options, X-Frame-Options, basic CSP.
+- Nunca commitees secretos. Toda la configuración va por variables de entorno. `.env` está
+  en `.gitignore`; `.env.example` se commitea con valores de ejemplo.
+- Escaneo de secretos: `gitleaks` corre en cada PR
+  (`.github/workflows/secret-scan.yml`) sobre el historial **completo** de git, así que un
+  secreto que llegó a entrar sigue tumbando la CI hasta que se purga del historial — no
+  basta con borrarlo en un commit posterior. Usa la CLI MIT desde una imagen fijada por
+  digest en vez de `gitleaks-action`, que exige licencia de pago para repositorios de una
+  organización. Dependabot no sigue ese digest; súbelo a mano.
+- SAST: CodeQL analiza el código Python en cada PR, en los push a `main` y semanalmente
+  (`.github/workflows/codeql.yml`), publicando en la pestaña Security. A propósito la
+  configuración *avanzada* — un workflow commiteado — y no la de un clic, que vive en los
+  ajustes del repositorio y por tanto no la heredaría una app generada desde esta
+  plantilla. No actives nunca las dos: entran en conflicto.
+- Escaneo de dependencias: `pip-audit` gobierna cada PR de backend y `npm audit
+  --audit-level=high` cada PR de frontend. Dependabot propone las actualizaciones; estos
+  jobs son lo que impide que un aviso se ignore mientras esa cadencia semanal va llegando.
+  El de npm está dormido hasta que exista `frontend/package.json` — ver el guard `changes`
+  de `frontend-ci.yml`.
+- CORS: lista blanca de orígenes explícita por entorno. Nunca `*` combinado con
+  credenciales. `Settings.cors_origins` es una lista vacía por defecto, así que un entorno
+  que se olvide de `CORS_ORIGINS` no permite nada en vez de caer al localhost de un
+  desarrollador. Los entornos locales lo declaran en `.env` / `docker-compose.yml`.
+- Sentry: `send_default_pii=False`, más un gancho `before_send` — `scrub_event` en
+  `app/core/observability.py` — que recorre el evento entero redactando los valores que
+  cuelgan de claves sensibles y cualquier email o teléfono español que aparezca en texto
+  libre. `send_default_pii=False` solo impide que Sentry recoja PII por su cuenta; no hace
+  nada con la PII que le pasa la aplicación en un mensaje de log o en una variable local
+  capturada, que es donde se escapa de verdad. Los eventos siempre se limpian, nunca se
+  descartan.
+- Rate limiting en los endpoints públicos (creación de reservas).
+- Cabeceras de seguridad: HSTS, X-Content-Type-Options, X-Frame-Options, CSP básica.
 
-## Stack constraints
+## Restricciones de stack
 
-- Backend: FastAPI, SQLAlchemy, Alembic, PostgreSQL. Ruff for lint and format, mypy for
-  types, uv for dependency management (`uv.lock` is committed).
-- Frontend: React + Vite + TypeScript, Zustand (global state), TanStack Query (server state).
-- Tests: pytest (backend), Vitest (frontend). Business logic tests are written alongside
-  the logic, not deferred to a later phase.
+- Backend: FastAPI, SQLAlchemy, Alembic, PostgreSQL. Ruff para lint y formato, mypy para
+  tipos, uv para gestionar dependencias (`uv.lock` se commitea).
+- Frontend: React + Vite + TypeScript, Zustand (estado global), TanStack Query (estado de
+  servidor).
+- Tests: pytest (backend), Vitest (frontend). Los tests de lógica de negocio se escriben
+  junto a la lógica, no se aplazan a una fase posterior.

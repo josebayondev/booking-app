@@ -1,10 +1,10 @@
-"""The mapped models, all of them.
+"""Todos los modelos mapeados, sin excepción.
 
-Importing every model here is load-bearing, not tidiness. alembic/env.py does
-`from app.models import Base` and autogenerate only sees the tables whose module has
-actually been imported, so a model missing from this file produces an *empty* migration
-without warning about anything. tests/test_models_domain.py pins the set so that failure
-cannot happen quietly.
+Importar aquí cada modelo no es orden, es funcional. alembic/env.py hace
+`from app.models import Base` y autogenerate solo ve las tablas cuyo módulo se ha
+importado de verdad, así que un modelo que falte en este fichero produce una migración
+*vacía* sin avisar de nada. tests/test_models_domain.py fija el conjunto para que ese
+fallo no pueda ocurrir en silencio.
 """
 
 from app.models.appointment_type import AppointmentType

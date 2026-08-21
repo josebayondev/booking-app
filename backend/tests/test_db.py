@@ -1,3 +1,5 @@
+"""Tests de la conexión a base de datos: driver, chequeo de arranque y la dependencia get_db()."""
+
 import pytest
 from sqlalchemy import text
 

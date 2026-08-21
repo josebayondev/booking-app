@@ -1,3 +1,5 @@
+# Qué se queda fuera del repositorio. Ojo con la sección de variables de entorno:
+# .env está ignorado y .env.example es la única excepción que sí se commitea.
 # ==============================================================
 # Python / Backend
 # ==============================================================
@@ -11,7 +13,7 @@ backend/lib64/
 *.egg-info/
 *.egg
 
-# Testing / coverage
+# Tests / cobertura
 .pytest_cache/
 .coverage
 .coverage.*

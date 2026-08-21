@@ -1,3 +1,6 @@
+"""Tests de los modelos de dominio contra Postgres de verdad: persistencia, valores por
+defecto que pone la base de datos y cada una de las restricciones."""
+
 from datetime import UTC, datetime, time
 
 import pytest
@@ -9,9 +12,9 @@ from app.models import AppointmentType, AvailabilityException, AvailabilityRule,
 
 
 def test_every_domain_table_is_registered() -> None:
-    """Catches the failure that is otherwise silent: a model whose module nobody
-    imports in app/models/__init__.py is invisible to alembic autogenerate, which then
-    writes an empty migration and says nothing."""
+    """Caza el fallo que si no es silencioso: un modelo cuyo módulo nadie importa en
+    app/models/__init__.py es invisible para el autogenerate de alembic, que entonces
+    escribe una migración vacía y no dice nada."""
     assert set(Base.metadata.tables) == {
         "appointment_type",
         "availability_rule",
@@ -56,7 +59,8 @@ class TestPersistence:
 
         assert stored.slug == "reunion-inicial"
         assert stored.duration_minutes == 30
-        # Filled by the database, not by Python: a row inserted from psql gets them too.
+        # Los rellena la base de datos, no Python: una fila insertada desde psql también
+        # los recibe.
         assert stored.buffer_minutes == 15
         assert stored.min_notice_hours == 12
         assert stored.max_advance_days == 60
@@ -67,8 +71,8 @@ class TestPersistence:
         assert stored.updated_at is not None
 
     def test_availability_exception_defaults_to_a_block(self, db_session: Session) -> None:
-        """A row created without saying which way it goes must close the calendar, not
-        open it: forgetting the flag has to fail closed."""
+        """Una fila creada sin decir en qué dirección va tiene que cerrar el calendario, no
+        abrirlo: olvidarse del flag debe fallar cerrado."""
         db_session.add(_exception())
         db_session.flush()
         db_session.expire_all()
@@ -79,11 +83,12 @@ class TestPersistence:
         assert stored.reason is None
 
     def test_the_two_time_columns_keep_their_different_types(self, db_session: Session) -> None:
-        """The keystone of the whole design, asserted against Postgres itself rather than
-        against SQLAlchemy: a rule is a naive wall clock, an exception is a real instant.
+        """La piedra angular de todo el diseño, comprobada contra el propio Postgres y no
+        contra SQLAlchemy: una regla es un reloj de pared naive, una excepción es un instante
+        real.
 
-        If TIME ever became TIMESTAMPTZ, "Mondays at 10:00" would start meaning 11:00
-        every summer, and nothing else in the suite would notice.
+        Si TIME llegase a ser TIMESTAMPTZ, "los lunes a las 10:00" pasaría a significar las
+        11:00 cada verano, y nada más en la suite se enteraría.
         """
         db_session.add_all([_rule(), _exception()])
         db_session.flush()
@@ -100,8 +105,8 @@ class TestPersistence:
 
 @pytest.mark.db
 class TestConstraints:
-    """One constraint per test. db_session rolls its transaction back afterwards, so a
-    failed flush leaving the session unusable does not matter."""
+    """Una restricción por test. db_session deshace su transacción después, así que da igual
+    que un flush fallido deje la sesión inservible."""
 
     @pytest.mark.parametrize(
         ("field", "value"),
@@ -137,21 +142,21 @@ class TestConstraints:
 
     @pytest.mark.parametrize("end", [time(10, 0), time(9, 0)])
     def test_rule_must_end_after_it_starts(self, db_session: Session, end: time) -> None:
-        """Which also rules out a block crossing midnight."""
+        """Lo que descarta también un bloque que cruce la medianoche."""
         db_session.add(_rule(ends_at_local=end))
 
         with pytest.raises(IntegrityError):
             db_session.flush()
 
     def test_rule_weekday_and_start_are_unique_together(self, db_session: Session) -> None:
-        """The natural key the seed relies on to insert only what is missing."""
+        """La clave natural en la que se apoya el seed para insertar solo lo que falta."""
         db_session.add_all([_rule(), _rule(ends_at_local=time(13, 0))])
 
         with pytest.raises(IntegrityError):
             db_session.flush()
 
     def test_two_blocks_on_the_same_day_are_allowed(self, db_session: Session) -> None:
-        """The other side of that constraint: mornings and afternoons must coexist."""
+        """La otra cara de esa restricción: mañanas y tardes tienen que poder convivir."""
         db_session.add_all([_rule(), _rule(starts_at_local=time(16, 0), ends_at_local=time(19, 0))])
 
         db_session.flush()
