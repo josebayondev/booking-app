@@ -8,6 +8,16 @@ on:
     branches: [main]
     paths:
       - "backend/alembic/**"
+      # The seed too, because the job runs it and it lives outside alembic/. What needs
+      # this path is *adding* a default -- a second appointment type, a Saturday block:
+      # rows that do not exist yet by natural key, which the seed inserts.
+      #
+      # Editing an existing default is a different matter and this path does not help
+      # there: seed_defaults() never updates a row that is already present, so changing
+      # 30 to 45 in app/seed.py leaves production on 30 whether this workflow fires or
+      # not. That is deliberate -- see the docstring. Changing a live value is an UPDATE,
+      # or the admin panel once it exists, not an edit to the defaults.
+      - "backend/app/seed.py"
       - ".github/workflows/migrate-production.yml"
   workflow_dispatch:
 
@@ -81,3 +91,16 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL_PRODUCTION }}
         run: uv run alembic upgrade head
+
+      # Runs on every push that gets this far, which is safe: seed_defaults() inserts
+      # only the default rows that are missing and never touches one that already
+      # exists, so a duration edited from the admin panel survives a redeploy.
+      #
+      # It belongs here rather than in a manual step because a database that migrated
+      # but was never seeded answers GET /availability with an empty calendar -- which
+      # looks like a booked-solid professional, not like a broken deploy.
+      - name: Seed default configuration
+        if: steps.guard.outputs.configured == 'true'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_PRODUCTION }}
+        run: uv run python -m app.seed
