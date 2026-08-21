@@ -1,6 +1,7 @@
 import os
 from functools import lru_cache
 from typing import Annotated, Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -29,12 +30,31 @@ class Settings(BaseSettings):
     # Unset means "Sentry off": that is the default locally and in CI, and only
     # the deployed environments define it.
     sentry_dsn: str | None = None
+    # The owner's timezone: bookings are stored in UTC, but availability rules are
+    # expressed in his local wall clock. One owner and one calendar, so this is
+    # configuration rather than a column. See app/core/timezone.py.
+    booking_timezone: str = "Europe/Madrid"
 
     @field_validator("cors_origins", mode="before")
     @classmethod
     def split_cors_origins(cls, value: str | list[str]) -> str | list[str]:
         if isinstance(value, str):
             return [origin.strip() for origin in value.split(",") if origin.strip()]
+        return value
+
+    @field_validator("booking_timezone")
+    @classmethod
+    def validate_booking_timezone(cls, value: str) -> str:
+        # Fail at startup rather than on the first booking: a typo here would
+        # otherwise sit dormant until someone tried to read the calendar.
+        #
+        # Re-raised as ValueError on purpose. ZoneInfoNotFoundError subclasses
+        # KeyError, which pydantic does not convert into a ValidationError, so the
+        # unwrapped version surfaces as a bare KeyError that never names the field.
+        try:
+            ZoneInfo(value)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError(f"Unknown timezone: {value!r}") from exc
         return value
 
 
