@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models import AppointmentType, AvailabilityException, AvailabilityRule, Base
+from app.models import AppointmentType, AvailabilityException, AvailabilityRule, Base, Booking
 
 
 def test_every_domain_table_is_registered() -> None:
@@ -19,6 +19,7 @@ def test_every_domain_table_is_registered() -> None:
         "appointment_type",
         "availability_rule",
         "availability_exception",
+        "booking",
     }
 
 
@@ -46,6 +47,17 @@ def _exception(**overrides: object) -> AvailabilityException:
         "ends_at": datetime(2026, 8, 16, 0, 0, tzinfo=UTC),
     }
     return AvailabilityException(**(defaults | overrides))
+
+
+def _booking(appointment_type_id: int, **overrides: object) -> Booking:
+    defaults: dict[str, object] = {
+        "appointment_type_id": appointment_type_id,
+        "customer_name": "Ada Lovelace",
+        "customer_email": "ada@example.com",
+        "starts_at": datetime(2026, 8, 17, 10, 0, tzinfo=UTC),
+        "ends_at": datetime(2026, 8, 17, 10, 30, tzinfo=UTC),
+    }
+    return Booking(**(defaults | overrides))
 
 
 @pytest.mark.db
@@ -101,6 +113,25 @@ class TestPersistence:
         assert rule.starts_at_local.tzinfo is None
         assert exception.starts_at.tzinfo is not None
         assert exception.starts_at == datetime(2026, 8, 15, 0, 0, tzinfo=UTC)
+
+    def test_booking_round_trips_with_its_defaults(self, db_session: Session) -> None:
+        appointment_type = _appointment_type()
+        db_session.add(appointment_type)
+        db_session.flush()
+
+        db_session.add(_booking(appointment_type.id))
+        db_session.flush()
+        db_session.expire_all()
+
+        stored = db_session.scalars(select(Booking)).one()
+
+        assert stored.status == "confirmed"
+        # Generados por Python (default=), no por la base de datos: token_urlsafe y la
+        # referencia con prefijo BK- no tienen equivalente en server_default.
+        assert len(stored.token) == 43
+        assert stored.reference.startswith("BK-")
+        assert len(stored.reference) == 9
+        assert stored.created_at is not None
 
 
 @pytest.mark.db
@@ -166,3 +197,131 @@ class TestConstraints:
 
         with pytest.raises(IntegrityError):
             db_session.flush()
+
+    def test_booking_requires_an_existing_appointment_type(self, db_session: Session) -> None:
+        db_session.add(_booking(appointment_type_id=999))
+
+        with pytest.raises(IntegrityError):
+            db_session.flush()
+
+    def test_booking_status_is_restricted(self, db_session: Session) -> None:
+        appointment_type = _appointment_type()
+        db_session.add(appointment_type)
+        db_session.flush()
+
+        db_session.add(_booking(appointment_type.id, status="pending"))
+
+        with pytest.raises(IntegrityError):
+            db_session.flush()
+
+    def test_booking_must_end_after_it_starts(self, db_session: Session) -> None:
+        appointment_type = _appointment_type()
+        db_session.add(appointment_type)
+        db_session.flush()
+
+        db_session.add(
+            _booking(
+                appointment_type.id,
+                starts_at=datetime(2026, 8, 17, 10, 0, tzinfo=UTC),
+                ends_at=datetime(2026, 8, 17, 9, 0, tzinfo=UTC),
+            )
+        )
+
+        with pytest.raises(IntegrityError):
+            db_session.flush()
+
+    def test_booking_token_is_unique(self, db_session: Session) -> None:
+        appointment_type = _appointment_type()
+        db_session.add(appointment_type)
+        db_session.flush()
+
+        shared_token = "a" * 43
+        db_session.add_all(
+            [
+                _booking(appointment_type.id, token=shared_token),
+                _booking(
+                    appointment_type.id,
+                    token=shared_token,
+                    starts_at=datetime(2026, 8, 18, 10, 0, tzinfo=UTC),
+                    ends_at=datetime(2026, 8, 18, 10, 30, tzinfo=UTC),
+                ),
+            ]
+        )
+
+        with pytest.raises(IntegrityError):
+            db_session.flush()
+
+    def test_booking_reference_is_unique(self, db_session: Session) -> None:
+        appointment_type = _appointment_type()
+        db_session.add(appointment_type)
+        db_session.flush()
+
+        db_session.add_all(
+            [
+                _booking(appointment_type.id, reference="BK-111111"),
+                _booking(
+                    appointment_type.id,
+                    reference="BK-111111",
+                    starts_at=datetime(2026, 8, 18, 10, 0, tzinfo=UTC),
+                    ends_at=datetime(2026, 8, 18, 10, 30, tzinfo=UTC),
+                ),
+            ]
+        )
+
+        with pytest.raises(IntegrityError):
+            db_session.flush()
+
+    def test_overlapping_bookings_are_rejected(self, db_session: Session) -> None:
+        """La restricción que de verdad impide la doble reserva, contra Postgres y no
+        solo contra la aplicación."""
+        appointment_type = _appointment_type()
+        db_session.add(appointment_type)
+        db_session.flush()
+
+        db_session.add(_booking(appointment_type.id))
+        db_session.flush()
+
+        db_session.add(
+            _booking(
+                appointment_type.id,
+                starts_at=datetime(2026, 8, 17, 10, 15, tzinfo=UTC),
+                ends_at=datetime(2026, 8, 17, 10, 45, tzinfo=UTC),
+            )
+        )
+
+        with pytest.raises(IntegrityError):
+            db_session.flush()
+
+    def test_a_cancelled_booking_frees_its_slot(self, db_session: Session) -> None:
+        """La otra cara del EXCLUDE: cancelar tiene que liberar de verdad el hueco, no
+        solo dejar de mostrarlo."""
+        appointment_type = _appointment_type()
+        db_session.add(appointment_type)
+        db_session.flush()
+
+        db_session.add(_booking(appointment_type.id, status="cancelled"))
+        db_session.flush()
+
+        db_session.add(_booking(appointment_type.id))
+
+        db_session.flush()
+
+    def test_back_to_back_bookings_are_allowed(self, db_session: Session) -> None:
+        """El rango es half-open ([)): que una reserva termine a las 10:30 justo cuando
+        otra empieza no cuenta como solape."""
+        appointment_type = _appointment_type()
+        db_session.add(appointment_type)
+        db_session.flush()
+
+        db_session.add(_booking(appointment_type.id))
+        db_session.flush()
+
+        db_session.add(
+            _booking(
+                appointment_type.id,
+                starts_at=datetime(2026, 8, 17, 10, 30, tzinfo=UTC),
+                ends_at=datetime(2026, 8, 17, 11, 0, tzinfo=UTC),
+            )
+        )
+
+        db_session.flush()
