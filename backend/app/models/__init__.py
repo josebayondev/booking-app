@@ -10,6 +10,7 @@ fallo no pueda ocurrir en silencio.
 from app.models.appointment_type import AppointmentType
 from app.models.availability import AvailabilityException, AvailabilityRule
 from app.models.base import Base
+from app.models.booking import Booking
 from app.models.mixins import TimestampMixin
 
 __all__ = [
@@ -17,5 +18,6 @@ __all__ = [
     "AvailabilityException",
     "AvailabilityRule",
     "Base",
+    "Booking",
     "TimestampMixin",
 ]
