@@ -44,6 +44,12 @@ os.environ["CORS_ORIGINS"] = TEST_CORS_ORIGIN
 # proyecto real de Sentry, y un SENTRY_DSN exportado mandaría ruido de tests a producción.
 os.environ["SENTRY_DSN"] = ""
 
+# El límite real (60/min) es holgado para una persona pero no para una suite que dispara
+# peticiones seguidas contra /api/v1 desde un único "cliente", así que aquí se sube hasta
+# donde no pueda estorbar. Al limitador lo prueba tests/test_rate_limit.py, que se monta su
+# propia app con límites diminutos en vez de depender de este valor.
+os.environ["RATE_LIMIT_REQUESTS"] = "100000"
+
 SETTINGS_ENV_VARS = (
     "ENVIRONMENT",
     "PROJECT_NAME",
@@ -51,6 +57,8 @@ SETTINGS_ENV_VARS = (
     "DATABASE_URL",
     "SENTRY_DSN",
     "BOOKING_TIMEZONE",
+    "RATE_LIMIT_REQUESTS",
+    "RATE_LIMIT_WINDOW_SECONDS",
 )
 
 

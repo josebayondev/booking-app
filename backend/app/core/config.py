@@ -9,7 +9,7 @@ from functools import lru_cache
 from typing import Annotated, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 # El fichero .env es una comodidad de desarrollo local: Render y Docker inyectan
@@ -41,6 +41,12 @@ class Settings(BaseSettings):
     # disponibilidad se expresan en su reloj de pared local. Un dueño y un calendario,
     # así que esto es configuración y no una columna. Ver app/core/timezone.py.
     booking_timezone: str = "Europe/Madrid"
+    # Rate limiting de /api/v1, por cliente y en memoria (app/core/rate_limit.py). Sesenta
+    # peticiones por minuto es holgado para una persona pintando un calendario mes a mes y
+    # estrecho para un bucle. Configurable porque el valor correcto solo se sabe viendo
+    # tráfico real, y ajustarlo no puede exigir un despliegue de código.
+    rate_limit_requests: int = Field(default=60, ge=1)
+    rate_limit_window_seconds: int = Field(default=60, ge=1)
 
     @field_validator("cors_origins", mode="before")
     @classmethod
