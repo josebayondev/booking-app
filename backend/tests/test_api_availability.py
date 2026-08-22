@@ -51,7 +51,7 @@ class TestAppointmentTypes:
         )
         db_session.flush()
 
-        response = api_client.get("/appointment-types")
+        response = api_client.get("/api/v1/appointment-types")
 
         assert response.status_code == 200
         assert [item["slug"] for item in response.json()] == ["primera", "segunda"]
@@ -61,15 +61,15 @@ class TestAppointmentTypes:
 class TestAvailability:
     def test_returns_404_for_an_unknown_slug(self, api_client: TestClient) -> None:
         response = api_client.get(
-            "/availability",
-            params={
-                "appointment_type": "no-existe",
-                "date_from": "2026-09-07",
-                "date_to": "2026-09-07",
-            },
+            "/api/v1/availability",
+            params={"type": "no-existe", "from": "2026-09-07", "to": "2026-09-07"},
         )
 
         assert response.status_code == 404
+        assert response.json() == {
+            "code": "appointment_type_not_found",
+            "detail": "No existe ese tipo de cita.",
+        }
 
     def test_returns_404_for_an_inactive_type(
         self, db_session: Session, api_client: TestClient
@@ -78,51 +78,53 @@ class TestAvailability:
         db_session.flush()
 
         response = api_client.get(
-            "/availability",
-            params={
-                "appointment_type": "reunion-inicial",
-                "date_from": "2026-09-07",
-                "date_to": "2026-09-07",
-            },
+            "/api/v1/availability",
+            params={"type": "reunion-inicial", "from": "2026-09-07", "to": "2026-09-07"},
         )
 
         assert response.status_code == 404
+        assert response.json()["code"] == "appointment_type_not_found"
 
     def test_rejects_a_reversed_date_range(self, client: TestClient) -> None:
         """No necesita base de datos: la validación ocurre antes de llegar al router."""
         response = client.get(
-            "/availability",
-            params={
-                "appointment_type": "reunion-inicial",
-                "date_from": "2026-09-10",
-                "date_to": "2026-09-01",
-            },
+            "/api/v1/availability",
+            params={"type": "reunion-inicial", "from": "2026-09-10", "to": "2026-09-01"},
         )
 
         assert response.status_code == 422
 
-    def test_returns_the_free_slots_of_a_real_appointment_type(
+    def test_rejects_a_range_longer_than_62_days(self, client: TestClient) -> None:
+        response = client.get(
+            "/api/v1/availability",
+            params={"type": "reunion-inicial", "from": "2026-09-07", "to": "2026-12-07"},
+        )
+
+        assert response.status_code == 422
+
+    def test_returns_every_requested_day_grouped_with_its_own_slots(
         self, db_session: Session, api_client: TestClient
     ) -> None:
         appointment_type = _appointment_type()
         db_session.add(appointment_type)
-        db_session.add(_rule())
+        db_session.add(_rule())  # solo cubre el lunes 2026-09-07
         db_session.flush()
 
         response = api_client.get(
-            "/availability",
-            params={
-                "appointment_type": "reunion-inicial",
-                "date_from": "2026-09-07",
-                "date_to": "2026-09-07",
-            },
+            "/api/v1/availability",
+            params={"type": "reunion-inicial", "from": "2026-09-07", "to": "2026-09-08"},
         )
 
         assert response.status_code == 200
-        slots = response.json()
-        assert len(slots) == 8  # 10:00-14:00 Madrid, treinta minutos cada slot
+        days = response.json()
+        assert [day["date"] for day in days] == ["2026-09-07", "2026-09-08"]
+
+        monday, tuesday = days
+        assert len(monday["slots"]) == 8  # 10:00-14:00 Madrid, treinta minutos cada slot
         # 10:00 en Madrid es verano (CEST, UTC+2) -> 08:00Z.
-        assert slots[0]["starts_at"] == "2026-09-07T08:00:00Z"
+        assert monday["slots"][0]["starts_at"] == "2026-09-07T08:00:00Z"
+        # Martes no tiene regla -> día presente, con la lista vacía, no ausente.
+        assert tuesday["slots"] == []
 
     def test_excludes_a_confirmed_booking(
         self, db_session: Session, api_client: TestClient
@@ -144,15 +146,11 @@ class TestAvailability:
         db_session.flush()
 
         response = api_client.get(
-            "/availability",
-            params={
-                "appointment_type": "reunion-inicial",
-                "date_from": "2026-09-07",
-                "date_to": "2026-09-07",
-            },
+            "/api/v1/availability",
+            params={"type": "reunion-inicial", "from": "2026-09-07", "to": "2026-09-07"},
         )
 
         assert response.status_code == 200
-        slots = response.json()
+        slots = response.json()[0]["slots"]
         assert len(slots) == 7  # 08:30-12:00Z libres tras la reserva, treinta minutos cada slot
         assert slots[0]["starts_at"] == "2026-09-07T08:30:00Z"
