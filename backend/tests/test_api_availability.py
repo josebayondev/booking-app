@@ -10,6 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from app.api.availability import AVAILABILITY_CACHE_CONTROL
 from app.models import AppointmentType, AvailabilityRule, Booking
 
 
@@ -154,3 +155,90 @@ class TestAvailability:
         slots = response.json()[0]["slots"]
         assert len(slots) == 7  # 08:30-12:00Z libres tras la reserva, treinta minutos cada slot
         assert slots[0]["starts_at"] == "2026-09-07T08:30:00Z"
+
+    def test_a_cancelled_booking_frees_its_slot_again(
+        self, db_session: Session, api_client: TestClient
+    ) -> None:
+        """Fija el filtro por estado del predicado de solape: el `&&` selecciona la fila
+        igual, y lo que la descarta es `status == 'confirmed'`."""
+        appointment_type = _appointment_type(buffer_minutes=0)
+        db_session.add(appointment_type)
+        db_session.add(_rule())
+        db_session.flush()
+
+        db_session.add(
+            Booking(
+                appointment_type_id=appointment_type.id,
+                customer_name="Ada Lovelace",
+                customer_email="ada@example.com",
+                starts_at=datetime(2026, 9, 7, 8, 0, tzinfo=UTC),
+                ends_at=datetime(2026, 9, 7, 8, 30, tzinfo=UTC),
+                status="cancelled",
+            )
+        )
+        db_session.flush()
+
+        response = api_client.get(
+            "/api/v1/availability",
+            params={"type": "reunion-inicial", "from": "2026-09-07", "to": "2026-09-07"},
+        )
+
+        assert response.status_code == 200
+        slots = response.json()[0]["slots"]
+        assert len(slots) == 8
+        assert slots[0]["starts_at"] == "2026-09-07T08:00:00Z"
+
+    def test_a_booking_that_only_touches_the_window_edge_does_not_block_it(
+        self, db_session: Session, api_client: TestClient
+    ) -> None:
+        """El rango es semiabierto `[)`: una reserva que termina justo cuando empieza el día
+        pedido no se solapa con él y no puede quitarle ningún hueco."""
+        appointment_type = _appointment_type(buffer_minutes=0)
+        db_session.add(appointment_type)
+        db_session.add(_rule())
+        db_session.flush()
+
+        # 2026-09-07T00:00 en Madrid (CEST, UTC+2) es 2026-09-06T22:00Z, o sea justo el
+        # borde inferior de la ventana que consulta el endpoint.
+        db_session.add(
+            Booking(
+                appointment_type_id=appointment_type.id,
+                customer_name="Ada Lovelace",
+                customer_email="ada@example.com",
+                starts_at=datetime(2026, 9, 6, 21, 30, tzinfo=UTC),
+                ends_at=datetime(2026, 9, 6, 22, 0, tzinfo=UTC),
+            )
+        )
+        db_session.flush()
+
+        response = api_client.get(
+            "/api/v1/availability",
+            params={"type": "reunion-inicial", "from": "2026-09-07", "to": "2026-09-07"},
+        )
+
+        assert response.status_code == 200
+        assert len(response.json()[0]["slots"]) == 8
+
+    def test_the_response_is_cacheable_for_a_minute(
+        self, db_session: Session, api_client: TestClient
+    ) -> None:
+        db_session.add(_appointment_type())
+        db_session.flush()
+
+        response = api_client.get(
+            "/api/v1/availability",
+            params={"type": "reunion-inicial", "from": "2026-09-07", "to": "2026-09-07"},
+        )
+
+        assert response.headers["cache-control"] == AVAILABILITY_CACHE_CONTROL
+
+    def test_a_404_is_not_cached(self, api_client: TestClient) -> None:
+        """El Cache-Control se pone solo en el camino bueno: cachear un 404 dejaría un tipo
+        de cita recién activado invisible durante un minuto."""
+        response = api_client.get(
+            "/api/v1/availability",
+            params={"type": "no-existe", "from": "2026-09-07", "to": "2026-09-07"},
+        )
+
+        assert response.status_code == 404
+        assert "cache-control" not in response.headers

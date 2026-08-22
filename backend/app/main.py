@@ -18,6 +18,7 @@ from app.core.config import get_settings
 from app.core.db import check_db_connection
 from app.core.errors import register_error_handlers
 from app.core.observability import configure_sentry
+from app.core.rate_limit import RateLimitMiddleware
 from app.core.security_headers import SecurityHeadersMiddleware
 
 logging.basicConfig(level=logging.INFO)
@@ -41,6 +42,22 @@ app = FastAPI(
     redoc_url=None if is_production else "/redoc",
     openapi_url=None if is_production else "/openapi.json",
     lifespan=lifespan,
+)
+
+# Se añade el primero de los tres, o sea el más interno, para que quede por DENTRO de
+# CORSMiddleware: así una respuesta 429 sale con sus cabeceras CORS y el navegador deja al
+# frontend leer el código y el Retry-After en vez de convertirla en un error de red opaco.
+# Como efecto secundario deseable, los preflight -- que CORSMiddleware contesta él mismo
+# sin llegar hasta aquí -- no consumen cupo.
+app.add_middleware(
+    RateLimitMiddleware,
+    max_requests=settings.rate_limit_requests,
+    window_seconds=settings.rate_limit_window_seconds,
+    # Mismo razonamiento que el HSTS de abajo: fuera de local hay un proxy de Render por
+    # delante y el socket remoto es siempre el suyo, así que sin leer X-Forwarded-For todo
+    # el tráfico caería en un único cubo. En local no hay proxy y la cabecera solo puede
+    # venir falsificada.
+    trust_forwarded_for=settings.environment != "local",
 )
 
 app.add_middleware(
