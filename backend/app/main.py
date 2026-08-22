@@ -66,6 +66,10 @@ app.add_middleware(
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
+    # Sin esto el 429 de RateLimitMiddleware sale con Retry-After en la respuesta real,
+    # pero invisible para el JS del navegador: CORS solo expone al fetch/XHR las cabeceras
+    # listadas aquí, y Retry-After no es una de las seguras por defecto.
+    expose_headers=["Retry-After"],
 )
 
 # Se añade el último para que envuelva a CORSMiddleware: las respuestas de preflight las

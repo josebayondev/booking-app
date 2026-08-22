@@ -110,14 +110,14 @@ def get_availability(
             select(AvailabilityRule).where(AvailabilityRule.is_active.is_(True))
         ).all()
 
+        # A diferencia de Booking, esta tabla no tiene índice GiST -- solo un índice
+        # b-tree normal en starts_at -- así que aquí sí conviene la comparación sargable
+        # en vez de _overlaps(): starts_at < fetch_end puede usar ese índice, mientras que
+        # el operador && no puede usar ninguno sin un índice de expresión que lo respalde.
         exceptions = db.scalars(
             select(AvailabilityException).where(
-                _overlaps(
-                    AvailabilityException.starts_at,
-                    AvailabilityException.ends_at,
-                    fetch_start,
-                    fetch_end,
-                )
+                AvailabilityException.starts_at < fetch_end,
+                AvailabilityException.ends_at > fetch_start,
             )
         ).all()
 
