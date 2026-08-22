@@ -16,6 +16,7 @@ from app.api.availability import router as availability_router
 from app.api.health import router as health_router
 from app.core.config import get_settings
 from app.core.db import check_db_connection
+from app.core.errors import register_error_handlers
 from app.core.observability import configure_sentry
 from app.core.security_headers import SecurityHeadersMiddleware
 
@@ -56,6 +57,8 @@ app.add_middleware(
 # habla HTTP plano con el contenedor, y porque mandar HSTS por http://localhost
 # envenenaría la caché HSTS del navegador para cualquier otro proyecto local.
 app.add_middleware(SecurityHeadersMiddleware, hsts=settings.environment != "local")
+
+register_error_handlers(app)
 
 app.include_router(health_router)
 app.include_router(availability_router)
