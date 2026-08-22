@@ -16,7 +16,7 @@ esto defiende, que es no caerse, y el momento de replantearlo será ese y no ant
 
 import math
 import time
-from collections import deque
+from collections import OrderedDict, deque
 from collections.abc import Callable
 
 from starlette.responses import JSONResponse
@@ -28,10 +28,10 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 RATE_LIMITED_CODE = "rate_limited"
 RATE_LIMITED_DETAIL = "Demasiadas peticiones. Espera unos segundos y vuelve a intentarlo."
 
-# Tope de clientes recordados a la vez. Sin él, el propio limitador sería un vector de
-# agotamiento de memoria: basta con pedir desde muchas IPs distintas para que el
-# diccionario crezca sin fin. Al superarlo se barre de inmediato en vez de esperar al
-# barrido periódico.
+# Tope duro de clientes recordados a la vez, impuesto por _enforce_cap. Sin él, el propio
+# limitador sería un vector de agotamiento de memoria: basta con pedir desde muchas IPs
+# distintas dentro de la misma ventana para que el diccionario crezca sin fin, porque
+# ninguna de esas entradas llegaría a estar vacía para que el barrido periódico la retire.
 MAX_TRACKED_CLIENTS = 10_000
 
 
@@ -48,18 +48,25 @@ def client_key(scope: Scope, *, trust_forwarded_for: bool) -> str:
     proxy, y por tanto la IP real. El primero es el que puede falsificar el cliente: usarlo
     permitiría saltarse el límite entero rotando la cabecera.
 
+    Se recorren **todas** las cabeceras `X-Forwarded-For` que traiga la petición, no solo
+    la primera que aparezca: nada impide que lleguen como varias cabeceras ASGI separadas
+    en vez de una sola con comas, y quedarse en la primera coincidencia dejaría sin leer
+    el hop que haya añadido el proxy de confianza si viene en una posterior.
+
     Fuera de un entorno desplegado (`trust_forwarded_for=False`) la cabecera se ignora del
     todo, porque ahí no hay ningún proxy que la escriba y cualquiera podría inventársela.
     """
     if trust_forwarded_for:
         headers: list[tuple[bytes, bytes]] = scope["headers"]
-        for name, value in headers:
-            if name == b"x-forwarded-for":
-                hops = [hop.strip() for hop in value.decode("latin-1").split(",")]
-                real = [hop for hop in hops if hop]
-                if real:
-                    return real[-1]
-                break
+        hops = [
+            hop.strip()
+            for name, value in headers
+            if name == b"x-forwarded-for"
+            for hop in value.decode("latin-1").split(",")
+        ]
+        real = [hop for hop in hops if hop]
+        if real:
+            return real[-1]
 
     # None cuando no hay socket (tests con transporte en memoria, o ASGI sin peer): un
     # cubo compartido es el comportamiento seguro, nunca "sin límite".
@@ -98,7 +105,10 @@ class RateLimitMiddleware:
         # colgado ni abrirlo de par en par. Inyectable para que los tests avancen el
         # tiempo sin dormir.
         self.clock = clock
-        self._hits: dict[str, deque[float]] = {}
+        # OrderedDict y no dict a secas: _register mueve cada clave tocada al final, así
+        # que el principio siempre es la menos recientemente activa -- el orden que
+        # necesita el desalojo LRU de más abajo.
+        self._hits: OrderedDict[str, deque[float]] = OrderedDict()
         self._last_sweep = clock()
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
@@ -134,6 +144,8 @@ class RateLimitMiddleware:
         self._maybe_sweep(now)
 
         hits = self._hits.setdefault(key, deque())
+        self._hits.move_to_end(key)
+        self._enforce_cap()
         cutoff = now - self.window_seconds
         while hits and hits[0] <= cutoff:
             hits.popleft()
@@ -145,13 +157,28 @@ class RateLimitMiddleware:
         hits.append(now)
         return None
 
+    def _enforce_cap(self) -> None:
+        """Tope duro de memoria: nunca más de MAX_TRACKED_CLIENTS claves vivas a la vez.
+
+        A diferencia de _maybe_sweep, esto no depende de que una ventana haya expirado --
+        si no lo hiciera, una avalancha de identidades distintas (X-Forwarded-For
+        falsificado) dentro de una misma ventana crecería sin límite, porque ninguna
+        tendría el hueco vacío que _maybe_sweep necesita para retirarla. Se desaloja
+        siempre por el principio del OrderedDict, que _register mantiene ordenado de
+        menos a más recientemente activo -- el fallo seguro es que un cliente poco activo
+        pierda su historial antes de tiempo, nunca agotar memoria.
+        """
+        while len(self._hits) > MAX_TRACKED_CLIENTS:
+            self._hits.popitem(last=False)
+
     def _maybe_sweep(self, now: float) -> None:
         """Tira los clientes que ya no tienen ninguna petición dentro de la ventana.
 
         Una petición solo poda su propia entrada, así que sin este barrido el diccionario
-        conservaría para siempre a todo el que haya pasado alguna vez.
+        conservaría para siempre a todo el que haya pasado alguna vez. El tope duro de
+        memoria es responsabilidad de _enforce_cap, no de este barrido periódico.
         """
-        if now - self._last_sweep < self.window_seconds and len(self._hits) <= MAX_TRACKED_CLIENTS:
+        if now - self._last_sweep < self.window_seconds:
             return
 
         cutoff = now - self.window_seconds

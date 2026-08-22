@@ -178,6 +178,21 @@ def test_client_key_reads_the_last_forwarded_hop(header: bytes, expected: str) -
     assert client_key(scope, trust_forwarded_for=True) == expected
 
 
+def test_client_key_reads_across_repeated_headers_not_just_the_first() -> None:
+    """X-Forwarded-For puede llegar como varias cabeceras ASGI separadas en vez de una
+    sola con comas; el hop del proxy de confianza puede caer en cualquiera de ellas."""
+    scope = {
+        "type": "http",
+        "headers": [
+            (b"x-forwarded-for", b"9.9.9.9"),
+            (b"x-forwarded-for", b"5.6.7.8"),
+        ],
+        "client": ("10.0.0.1", 1234),
+    }
+
+    assert client_key(scope, trust_forwarded_for=True) == "5.6.7.8"
+
+
 def test_client_key_falls_back_to_a_shared_bucket_without_a_peer() -> None:
     """Sin socket no hay identidad; compartir cubo es seguro, "sin límite" no lo sería."""
     scope = {"type": "http", "headers": [], "client": None}
@@ -200,15 +215,29 @@ def test_idle_clients_are_forgotten_so_the_tracker_cannot_grow_forever() -> None
     assert list(middleware._hits) == ["recien-llegado"]
 
 
-def test_the_sweep_also_triggers_on_the_client_cap() -> None:
+def test_the_client_cap_is_enforced_even_within_a_single_window() -> None:
     """Muchas IPs distintas dentro de una misma ventana no pueden hacer crecer la memoria
-    sin freno: superar el tope fuerza un barrido aunque la ventana no haya expirado."""
+    sin freno: el tope se aplica de inmediato, aunque ninguna ventana haya expirado
+    todavía y el barrido periódico no tendría nada que retirar."""
     clock = FakeClock()
     middleware = build_middleware(max_requests=5, window_seconds=60.0, clock=clock)
 
     for i in range(MAX_TRACKED_CLIENTS + 1):
         middleware._register(f"client-{i}")
 
-    # Todas siguen dentro de la ventana, así que el barrido no puede tirar ninguna todavía;
-    # lo que se comprueba es que se ha ejecutado y ha dejado el reloj del barrido al día.
-    assert middleware._last_sweep == clock.now
+    assert len(middleware._hits) <= MAX_TRACKED_CLIENTS
+
+
+def test_the_cap_evicts_the_least_recently_active_client_first() -> None:
+    clock = FakeClock()
+    middleware = build_middleware(max_requests=5, window_seconds=60.0, clock=clock)
+
+    for i in range(MAX_TRACKED_CLIENTS):
+        middleware._register(f"client-{i}")
+
+    # client-0 es la más antigua sin tocar; una nueva llegada debe desalojarla a ella, no
+    # a una al azar.
+    middleware._register("recien-llegado")
+
+    assert "client-0" not in middleware._hits
+    assert "recien-llegado" in middleware._hits
