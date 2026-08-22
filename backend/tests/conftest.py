@@ -166,6 +166,31 @@ def running_client() -> Iterator[TestClient]:
 
 
 @pytest.fixture
+def api_client(db_session: Session) -> Iterator[TestClient]:
+    """Un TestClient cuyas rutas leen y escriben en la MISMA transacción que db_session.
+
+    Sin esto, un endpoint bajo prueba abriría su propia sesión contra el engine
+    (Depends(get_db) crea un SessionLocal() nuevo, sobre otra conexión del pool), que no
+    vería nada de lo que un test prepara con db_session -- Postgres no enseña filas no
+    confirmadas de una transacción a otra conexión. app.dependency_overrides sustituye
+    esa dependencia por una que sencillamente reutiliza la sesión de db_session, así que
+    lo que el test inserta ya está ahí para el endpoint, y todo se deshace igual al
+    terminar (el rollback de db_session, no un commit de verdad).
+    """
+    from app.core.db import get_db
+    from app.main import app
+
+    def _override_get_db() -> Iterator[Session]:
+        yield db_session
+
+    app.dependency_overrides[get_db] = _override_get_db
+    try:
+        yield TestClient(app)
+    finally:
+        del app.dependency_overrides[get_db]
+
+
+@pytest.fixture
 def clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Borra todas las variables de Settings, para los tests que comprueban los valores por
     defecto o el .env.example. Sin ella, el bloque de aislamiento de arriba taparía lo que
