@@ -1,5 +1,6 @@
-# Dependabot: mantiene al día el lockfile de Python, los digests de las imágenes base y
-# los SHA de las actions. Semanal y con margen de espera antes de adoptar una release.
+# Dependabot: mantiene al día los lockfiles de Python y npm, los digests de las imágenes
+# base y los SHA de las actions. Semanal y con margen de espera antes de adoptar una
+# release.
 version: 2
 updates:
   # Dependencias de Python fijadas en backend/uv.lock
@@ -15,6 +16,23 @@ updates:
       default-days: 7
     groups:
       python:
+        patterns: ["*"]
+
+  # Dependencias de npm del frontend
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+    # Aquí sí se mueven los rangos de package.json, al revés que en el bloque de uv. En
+    # el backend los rangos de pyproject.toml son el contrato de compatibilidad y el pin
+    # real vive en uv.lock; en npm los rangos de package.json son el único pin que
+    # declara qué versión se quiere. Con lockfile-only, un major (React 20, Vite 9) no
+    # llegaría nunca a proponerse y el frontend se quedaría atrás en silencio.
+    versioning-strategy: increase
+    cooldown:
+      default-days: 7
+    groups:
+      npm:
         patterns: ["*"]
 
   # Digests de las imágenes base en backend/Dockerfile

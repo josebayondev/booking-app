@@ -33,11 +33,13 @@ Sistema de reserva de citas. Monorepo: `backend/` (FastAPI + SQLAlchemy + Alembi
 administración sí está autenticado. El backend despliega en Render, el frontend en Vercel,
 y la base de datos es Neon Postgres.
 
-`frontend/` es todavía un hueco vacío (sin andamiaje). `backend/` tiene el esqueleto de la
-aplicación (instancia de `FastAPI`, `/health`, configuración, Docker), Alembic con sus
-migraciones, los modelos de configuración de dominio (tipos de cita y disponibilidad) y su
-seed, más los workflows de CI. Todavía no hay CI de frontend en marcha: los jobs están
-escritos pero dormidos hasta que exista `frontend/package.json`.
+`backend/` tiene el esqueleto de la aplicación (instancia de `FastAPI`, `/health`,
+configuración, Docker), Alembic con sus migraciones, los modelos de configuración de dominio
+(tipos de cita y disponibilidad) y su seed, más los workflows de CI. `frontend/` tiene el
+andamiaje de Vite + React + TypeScript y poco más: un componente raíz de relleno, sin rutas
+ni páginas todavía, y sin Tailwind, Zustand ni TanStack Query — cada uno llega en su propio
+PR. Con ese andamiaje despertó la CI del frontend, que hasta entonces estaba escrita pero
+dormida.
 
 ## Comandos que NO debes ejecutar
 
@@ -88,13 +90,25 @@ cuando `uv.lock` no está en sintonía con `pyproject.toml`.
 
 ## Comandos del frontend
 
-Se ejecutan desde `frontend/` cuando exista el andamiaje:
+Se ejecutan desde `frontend/`. Las dependencias se gestionan con **npm** — no yarn ni pnpm —
+y `package-lock.json` está commiteado, igual que `uv.lock` en el backend. Que el gestor sea
+npm no es preferencia: `frontend-ci.yml` cachea con `cache-dependency-path:
+frontend/package-lock.json`, así que otro gestor rompería el caché de la CI.
 
 ```bash
-npm install
+npm install                     # instala desde package-lock.json
 cp .env.example .env
-npm run dev
+npm run dev                     # servidor de desarrollo: http://localhost:5173
+npm run lint                    # oxlint + prettier --check
+npm run format                  # reescribe el formato con prettier
+npm run typecheck               # tsc -b, en modo estricto
+npm run build                   # tsc -b && vite build
+npm audit --audit-level=high    # audita las deps bloqueadas
 ```
+
+`npm run lint` encadena `prettier --check` a propósito. `frontend-ci.yml` solo sabe invocar
+`lint`, `typecheck` y `build`, así que meter el formato dentro de `lint` es lo que hace que
+la CI lo verifique sin tener que tocar el workflow ni añadir un job.
 
 ## Docker / entorno local
 
@@ -207,6 +221,16 @@ tocan nunca datos reales y no aplican a Neon (staging/producción).
   de uv viene de una imagen `ghcr.io/astral-sh/uv` fijada por digest — mismo razonamiento
   que fijar las GitHub Actions por SHA. Dependabot (`.github/dependabot.yml`) mantiene al
   día el lockfile, los digests de las imágenes y los SHA de las actions.
+- **Andamiaje del frontend**: `frontend/` sale de la plantilla `react-ts` de `create-vite`,
+  con la demo del contador quitada. El lint lo hace **oxlint** (`.oxlintrc.json`) y el
+  formato **Prettier** — oxlint es lo que genera hoy la plantilla oficial, y hace en
+  TypeScript el mismo papel que Ruff en Python. Los `tsconfig` van más allá del template
+  con `strict`, `noUncheckedIndexedAccess`, `noImplicitOverride` y
+  `exactOptionalPropertyTypes`: es el equivalente de `mypy --strict`. `tsconfig.json` no
+  compila nada, solo referencia `tsconfig.app.json` (el código de `src/`) y
+  `tsconfig.node.json` (`vite.config.ts`), y por eso el typecheck es `tsc -b` y no `tsc`.
+  Solo las variables de entorno con prefijo `VITE_` llegan al navegador, así que ahí no va
+  nunca un secreto.
 - `docker-compose.yml` (raíz del repo) une `backend` + `postgres` solo para desarrollo local
   — producción usa Render + Neon, no este compose.
 
@@ -252,16 +276,16 @@ Este es un **repositorio público**.
   basta con borrarlo en un commit posterior. Usa la CLI MIT desde una imagen fijada por
   digest en vez de `gitleaks-action`, que exige licencia de pago para repositorios de una
   organización. Dependabot no sigue ese digest; súbelo a mano.
-- SAST: CodeQL analiza el código Python en cada PR, en los push a `main` y semanalmente
-  (`.github/workflows/codeql.yml`), publicando en la pestaña Security. A propósito la
-  configuración *avanzada* — un workflow commiteado — y no la de un clic, que vive en los
-  ajustes del repositorio y por tanto no la heredaría una app generada desde esta
-  plantilla. No actives nunca las dos: entran en conflicto.
+- SAST: CodeQL analiza el código Python y TypeScript en cada PR, en los push a `main` y
+  semanalmente (`.github/workflows/codeql.yml`), publicando en la pestaña Security. A
+  propósito la configuración *avanzada* — un workflow commiteado — y no la de un clic, que
+  vive en los ajustes del repositorio y por tanto no la heredaría una app generada desde
+  esta plantilla. No actives nunca las dos: entran en conflicto. Un lenguaje solo entra en
+  la matriz cuando ya hay ficheros suyos que analizar: CodeQL tumba la ejecución entera si
+  uno de los configurados no tiene nada que extraer.
 - Escaneo de dependencias: `pip-audit` gobierna cada PR de backend y `npm audit
   --audit-level=high` cada PR de frontend. Dependabot propone las actualizaciones; estos
   jobs son lo que impide que un aviso se ignore mientras esa cadencia semanal va llegando.
-  El de npm está dormido hasta que exista `frontend/package.json` — ver el guard `changes`
-  de `frontend-ci.yml`.
 - CORS: lista blanca de orígenes explícita por entorno. Nunca `*` combinado con
   credenciales. `Settings.cors_origins` es una lista vacía por defecto, así que un entorno
   que se olvide de `CORS_ORIGINS` no permite nada en vez de caer al localhost de un
