@@ -128,8 +128,32 @@ tocan nunca datos reales y no aplican a Neon (staging/producción).
   naive más un día de la semana; `local_to_utc()` las proyecta sobre una fecha concreta, y
   `local_day_bounds()` da los límites UTC de un día natural local. Los casos límite del
   cambio de hora están fijados por tests.
-- **Rutas**: los routers viven en `app/api/` (por ejemplo `health.py`) y se registran en la
-  app `FastAPI` desde `main.py` con `app.include_router(...)`.
+- **Capas de la API**: `app/api/` tiene los routers -- lo único que toca la sesión de base
+  de datos y construye la respuesta HTTP -- y se registran en la app `FastAPI` desde
+  `main.py` con `app.include_router(...)`. La lógica de negocio que no depende de
+  SQLAlchemy vive en `app/services/` como funciones puras: sin sesión de BD, sin leer el
+  reloj ni la configuración por su cuenta, todo entra por parámetro (ver
+  `compute_free_slots` en `app/services/availability.py`) -- así se puede testear sin
+  Postgres y queda reutilizable desde donde haga falta (el chatbot de FEAT 17, por
+  ejemplo). `app/schemas/` tiene los contratos Pydantic de entrada y salida de cada ruta,
+  con alias donde el nombre público de un query param no puede ser un identificador
+  Python (`from`/`to` en `AvailabilityQuery`). Los errores de regla de negocio (no de
+  forma de la petición) se lanzan como `ApiError` y se traducen a `{"code", "detail"}` por
+  el handler de `app/core/errors.py` -- los 422 nativos de FastAPI/Pydantic se quedan con
+  su formato de siempre, es una familia de error distinta. Todas las rutas públicas van
+  bajo el prefijo `/api/v1` desde el primer endpoint (decidido en ClickUp antes de escribir
+  código, FEAT 13) -- cambiarlo más tarde, con clientes de verdad enganchados, costaría
+  mucho más.
+- **Rate limiting**: `app/core/rate_limit.py` tiene `RateLimitMiddleware`, otro middleware
+  ASGI puro (mismo motivo que el de cabeceras de seguridad: nada de `BaseHTTPMiddleware`)
+  que limita las peticiones bajo `/api/v1` con una ventana deslizante en memoria -- sin
+  Redis, ver Decisiones de arquitectura. Se registra el primero de los tres middlewares en
+  `main.py`, o sea el más interno, para que una respuesta 429 salga ya con las cabeceras de
+  CORS y de seguridad puestas. Identifica al cliente por `X-Forwarded-For` cuando
+  `environment != "local"` (detrás hay un proxy de Render y el socket remoto es siempre el
+  suyo) y por el socket remoto en local. Un tope de claves recordadas (`MAX_TRACKED_CLIENTS`)
+  con desalojo LRU evita que el propio limitador sea un vector de agotamiento de memoria si
+  alguien rota la IP falsificada en cada petición.
 - **Cabeceras de seguridad**: `app/core/security_headers.py` tiene
   `SecurityHeadersMiddleware`, un middleware ASGI puro (no `BaseHTTPMiddleware`) que estampa
   `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` y una
@@ -164,7 +188,11 @@ tocan nunca datos reales y no aplican a Neon (staging/producción).
   `db_session` (una sesión dentro de una transacción que se deshace después, así que hasta
   un `commit()` del test se revierte, y que además vacía las tablas antes de empezar),
   `client`/`running_client` (la app real sin/con su lifespan, o sea sin/con conexión a base
-  de datos) y `clean_env`. Los tests que necesitan una base de datos viva llevan
+  de datos), `api_client` (un `TestClient` cuyas rutas comparten la misma transacción que
+  `db_session`, vía `app.dependency_overrides[get_db]` -- sin esto, `Depends(get_db)`
+  abriría una conexión nueva en cada request, invisible a las filas que el test acaba de
+  insertar; es el que usan los tests de endpoints que necesitan leer o escribir en la
+  base de datos) y `clean_env`. Los tests que necesitan una base de datos viva llevan
   `@pytest.mark.db`. Ojo: `alembic/env.py` sí lee `.env` a propósito — lo que quieres es que
   `alembic upgrade head` migre la base de datos que tengas configurada.
 - **Build de Docker**: `backend/Dockerfile` es un build en dos etapas — `builder` instala
@@ -256,3 +284,4 @@ Este es un **repositorio público**.
   servidor).
 - Tests: pytest (backend), Vitest (frontend). Los tests de lógica de negocio se escriben
   junto a la lógica, no se aplazan a una fase posterior.
+- CI/CD: los workflows están en `.github/workflows/` y corren automáticamente en cada PR.
