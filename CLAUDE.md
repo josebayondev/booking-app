@@ -246,7 +246,9 @@ tocan nunca datos reales y no aplican a Neon (staging/producción).
 ## Flujo de git
 
 - Trunk-based. `main` está protegida — GitHub rechaza los push directos.
-- Ramas: `feature/<nombre>`, `fix/<nombre>`, `chore/<nombre>`, salidas de `main`.
+- Ramas: `feature/<nombre>`, `fix/<nombre>`, `chore/<nombre>`, `docs/<nombre>`,
+  `test/<nombre>`, `refactor/<nombre>` — salidas de `main`, mismos tipos que los de
+  Conventional Commits (ver "Convenciones").
 - Todo cambio pasa por un PR. Solo squash merge.
 
 ## Decisiones de arquitectura
