@@ -284,3 +284,4 @@ Este es un **repositorio público**.
   servidor).
 - Tests: pytest (backend), Vitest (frontend). Los tests de lógica de negocio se escriben
   junto a la lógica, no se aplazan a una fase posterior.
+- CI/CD: los workflows están en `.github/workflows/` y corren automáticamente en cada PR.
