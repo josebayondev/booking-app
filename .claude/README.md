@@ -1,8 +1,8 @@
 # .claude/
 
-Configuración de Claude Code específica de este proyecto. Todo vacío por ahora — se irá
-rellenando cuando el patrón correspondiente se repita de verdad (ver `CLAUDE.md` para el
-resto de convenciones del proyecto).
+Configuración de Claude Code específica de este proyecto. Se va rellenando cuando el patrón
+correspondiente se repite de verdad, no antes (ver `CLAUDE.md` para el resto de convenciones
+del proyecto). Por ahora solo hay skills; `hooks/`, `commands/` y `agents/` siguen vacíos.
 
 - **`settings.json`** — permisos y hooks compartidos por cualquiera que abra este repo con
   Claude Code (se commitea).
@@ -15,10 +15,16 @@ resto de convenciones del proyecto).
   convierte en regla dura), formatear con `ruff format` tras cada edit, o evitar que se
   cuele un secreto en un commit.
 - **`skills/`** — flujos propios de este proyecto que se repiten y merecen empaquetarse
-  como procedimiento reutilizable, invocable por nombre o por contexto (p. ej. "generar y
-  revisar una migración"). Se añaden cuando el flujo se ha repetido 2-3 veces de verdad, no
-  antes — meter algo especulativo aquí sin haber visto el patrón repetirse es sobre-
-  ingeniería.
+  como procedimiento reutilizable, invocable por nombre o por contexto. Se añaden cuando el
+  flujo se ha repetido 2-3 veces de verdad, no antes — meter algo especulativo aquí sin
+  haber visto el patrón repetirse es sobre-ingeniería. Las que hay:
+  - **`siguiente-tarea/`** — abre el día: lee el tablero de ClickUp, elige la siguiente
+    subtarea y prepara el plan para implementarla, con su DoD y los ficheros que toca.
+  - **`cerrar-tarea/`** — cierra el ciclo: verifica lint, tipos y tests, comprueba el DoD y
+    que el PR está en `main`, marca la tarea en ClickUp y reporta lo que falta.
+  - **`clickup-booking-app.md`** — no es una skill, es la referencia que leen las dos: IDs
+    de las listas, cómo se organizan FEAT y subtareas, y la regla de estados. Cuando cambie
+    el tablero se actualiza este fichero, no las skills.
 - **`commands/`** — atajos directos de un solo prompt para cosas que el desarrollador quiere
   disparar a mano tecleando `/algo`. A diferencia de un skill, no es un procedimiento
   complejo de varios pasos — es una plantilla de prompt corta y explícita.
@@ -33,8 +39,7 @@ reutilizable) → `commands` (atajo manual) → `agents` (delegación aislada).
 `.mcp.json` (en la raíz del repo, no aquí dentro) — servidores MCP de proyecto, compartidos
 vía git (p. ej. ClickUp/GitHub) en vez de depender de la config personal de cada uno.
 
-Momento recomendado para empezar a rellenar esto en serio: al terminar las listas Infra y
-Seguridad de ClickUp, justo antes de empezar con los modelos/endpoints de negocio — es
-cuando ya se sabe qué flujos se repiten de verdad para este tipo de proyecto (API + Postgres
-+ frontend separado), y coincide con el momento de extraer todo esto como plantilla para
-futuros proyectos.
+Lo que llene esta carpeta acaba siendo el esqueleto de la plantilla para futuros proyectos,
+así que la vara de medir es esa: se sube aquí lo que ya se ha demostrado que se repite en un
+proyecto de este tipo (API + Postgres + frontend separado), no lo que parece que se va a
+repetir.
