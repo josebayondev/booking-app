@@ -76,10 +76,26 @@ Un resumen corto, no un documento:
 Antes de empezar, ofrece pasar la subtarea a `in progress` en ClickUp. Espera el visto
 bueno; no lo hagas por tu cuenta.
 
+### 8. Sugerir la rama y el commit
+
+Cierra la presentación con dos sugerencias de texto — nunca las ejecutes tú, es el
+desarrollador quien las lanza:
+
+- El comando para crear la rama: `git checkout -b <tipo>/<nombre-en-kebab-case>`, con
+  `<tipo>` de entre `feature`, `fix`, `chore`, `docs`, `test`, `refactor` (los mismos que
+  Conventional Commits, ver `CLAUDE.md`) según la naturaleza de la subtarea, y
+  `<nombre-en-kebab-case>` derivado de su título.
+- Un adelanto del commit con el que probablemente cierre la subtarea, en el mismo formato
+  de una sola línea: `<tipo>: <descripción corta>`. Es una plantilla orientativa a partir
+  del DoD, no una promesa — el commit real lo escribe el desarrollador cuando el código
+  esté listo, y puede que haga falta más de uno.
+
 ## Límites
 
-- **Nada de git ni de alembic**: ni `add`, ni `commit`, ni `push`, ni `merge`, ni ningún
-  comando `alembic`. Los ejecuta el desarrollador (ver `CLAUDE.md`).
+- **Nada de git ni de alembic**: nunca ejecutes `checkout`, `add`, `commit`, `push`,
+  `merge`, ni ningún comando `alembic`. Los ejecuta el desarrollador (ver `CLAUDE.md`).
+  Sugerir el texto de los comandos de rama y commit (paso 8) no es una excepción a esto:
+  se enseñan como texto para copiar, nunca se lanzan.
 - No crees tareas nuevas en ClickUp. Si detectas algo que falta en el tablero, propónlo y
   deja que él decida.
 - No amplíes el alcance de la subtarea. Si algo colindante parece necesario, sepáralo y

@@ -1,17 +1,3 @@
-/* Estilos globales mínimos: solo lo justo para que el placeholder se lea. El sistema de
-   estilos de verdad llega con Tailwind, en su propia subtarea. */
-:root {
-  font-family:
-    system-ui,
-    -apple-system,
-    'Segoe UI',
-    Roboto,
-    sans-serif;
-  line-height: 1.5;
-  color-scheme: light dark;
-}
-
-body {
-  margin: 0;
-  padding: 2rem;
-}
+/* Punto de entrada de estilos: activa Tailwind. El sistema de diseño real llega en un
+   FEAT posterior; hoy solo hace falta que las clases de utilidad estén disponibles. */
+@import 'tailwindcss';
