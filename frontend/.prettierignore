@@ -1,0 +1,4 @@
+# Lo que Prettier no debe tocar: artefactos de build y dependencias.
+dist/
+node_modules/
+*.tsbuildinfo

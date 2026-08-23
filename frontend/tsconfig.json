@@ -1,0 +1,9 @@
+// Raíz de la configuración de TypeScript: no compila nada por sí misma, solo referencia los
+// dos proyectos reales (el código de la app y los ficheros de build que corren en Node).
+{
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.node.json" }
+  ]
+}

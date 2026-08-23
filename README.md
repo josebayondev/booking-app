@@ -51,6 +51,17 @@ cp .env.example .env
 npm run dev
 ```
 
+Dev server at `http://localhost:5173`. Quality gates, the same ones CI runs:
+
+```bash
+npm run lint        # oxlint + prettier --check
+npm run typecheck   # tsc -b, strict mode
+npm run build       # tsc -b && vite build
+```
+
+`package-lock.json` is committed. Use npm — not yarn or pnpm — since CI caches on that
+lockfile.
+
 ### Local database + backend (Docker)
 
 ```bash

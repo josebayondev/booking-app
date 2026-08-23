@@ -34,6 +34,7 @@ db.sqlite3-journal
 # ==============================================================
 node_modules/
 dist/
+dist-ssr/
 .vite/
 *.local
 npm-debug.log*

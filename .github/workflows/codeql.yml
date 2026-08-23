@@ -1,5 +1,5 @@
-# Análisis estático (SAST) del código Python con CodeQL, publicando en la pestaña
-# Security del repositorio.
+# Análisis estático (SAST) del código Python y TypeScript con CodeQL, publicando en la
+# pestaña Security del repositorio.
 #
 # Configuración *avanzada* -- un fichero de workflow -- y no la configuración por
 # defecto de un clic que vive en los ajustes del repositorio. Esa por defecto vive en
@@ -44,18 +44,20 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # javascript-typescript se une a esta lista el día que aterrice el andamiaje
-        # del frontend. No se puede añadir por adelantado: CodeQL tumba la ejecución
-        # entera cuando un lenguaje configurado no tiene ficheros que extraer.
-        language: [python]
+        # javascript-typescript entró aquí en el mismo PR que el andamiaje del frontend,
+        # ni un momento antes: CodeQL tumba la ejecución entera cuando un lenguaje
+        # configurado no tiene ficheros que extraer. Mismo cuidado al revés -- si alguna
+        # vez se vacía frontend/, este lenguaje sale de la lista.
+        language: [python, javascript-typescript]
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      # Sin paso de autobuild y sin instalar dependencias: Python se analiza
-      # directamente desde el código fuente y CodeQL resuelve solo lo que necesita.
+      # Sin paso de autobuild y sin instalar dependencias: ni Python ni TypeScript son
+      # lenguajes compilados para CodeQL, así que se analizan directamente desde el
+      # código fuente y CodeQL resuelve solo lo que necesita. No hace falta npm ci.
       - name: Initialise CodeQL
         uses: github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4
         with:
