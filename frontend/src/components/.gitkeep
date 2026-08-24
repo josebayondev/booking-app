@@ -1,0 +1,1 @@
+# Componentes de presentación puros: props en, JSX fuera. Nunca importan de api/ ni llaman a useQuery/useMutation directamente -- eso vive en un hook de features/.
