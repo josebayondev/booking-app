@@ -2,6 +2,7 @@
 import { QueryClientProvider } from '@tanstack/react-query'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { BrowserRouter } from 'react-router'
 
 import App from './App.tsx'
 import './index.css'
@@ -16,8 +17,12 @@ if (rootElement === null) {
 
 createRoot(rootElement).render(
   <StrictMode>
+    {/* La caché de consultas es independiente de la ruta y sobrevive a la navegación, así
+        que el QueryClientProvider va por fuera del router. */}
     <QueryClientProvider client={queryClient}>
-      <App />
+      <BrowserRouter>
+        <App />
+      </BrowserRouter>
     </QueryClientProvider>
   </StrictMode>,
 )
