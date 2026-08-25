@@ -235,7 +235,19 @@ tocan nunca datos reales y no aplican a Neon (staging/producción).
   `src/components/` son componentes de presentación puros (props en, JSX fuera, sin tocar
   `api/` ni TanStack Query), `src/features/` es la lógica por área — los hooks que envuelven
   TanStack Query y los stores de Zustand — y `src/lib/` las utilidades transversales. Cada
-  carpeta lleva esa regla escrita en su `.gitkeep`.
+  carpeta lleva esa regla escrita en su `.gitkeep`. `src/pages/` se sumó con el router: un
+  componente por ruta, y su único trabajo es componer — tira de los hooks de `features/` y
+  pinta con los de `components/`, sin lógica propia. Es la quinta capa y llegó después que
+  las otras cuatro, porque hasta que no hubo rutas no había nada que colgar de ella.
+- **Rutas**: `react-router` en modo declarativo. El `BrowserRouter` va en `main.tsx`, por
+  dentro del `QueryClientProvider` — la caché de consultas es independiente de la ruta y
+  tiene que sobrevivir a la navegación — y la tabla de rutas vive en `App.tsx`. Se eligió
+  frente a TanStack Router (que da params tipados de punta a punta) porque son cinco rutas
+  planas y ningún dato se carga desde el router: de eso se encarga TanStack Query. La ruta
+  comodín `*` no es adorno: con las rutas en cliente, un token mal copiado del email de
+  confirmación aterriza ahí, y sin ella se quedaría mirando un layout vacío. Y ojo al
+  desplegar: un SPA necesita que el hosting devuelva `index.html` en cualquier ruta, o
+  entrar directo a `/cita/<token>` — que es justo la URL del email — da un 404.
 - **Estado de cliente**: los stores de Zustand viven en `src/features/<área>/`, uno por área
   (`features/ui/uiStore.ts` es el primero, todavía de ejemplo). Guardan **solo** lo que
   decide el usuario mientras navega: un menú desplegado, un filtro elegido, el paso de un
