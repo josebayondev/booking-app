@@ -4,18 +4,19 @@
 import { QueryClient } from '@tanstack/react-query'
 
 /**
- * Comprueba si un error trae un código de estado HTTP.
+ * Comprueba si un error se declara a sí mismo como no reintentable.
  *
- * La capa `api/` todavía no existe (llega en su propia subtarea), así que esto no se ata a
- * ninguna clase concreta: describe el contrato mínimo que sus errores tendrán que cumplir
- * — exponer un `status` numérico — y hasta entonces se queda en `false` sin romper nada.
+ * Es un contrato estructural, no un `instanceof`: `lib/` no puede importar de `api/` (ver
+ * las capas en `CLAUDE.md`), así que la capa de servicios marca sus errores con un
+ * `retryable` booleano y aquí solo se lee. Lo que no traiga la marca —el `TypeError` de un
+ * fetch que no llegó a salir— se reintenta, que es lo que se quiere con una red que falla.
  */
-function hasHttpStatus(error: unknown): error is { status: number } {
+function isNonRetryable(error: unknown): boolean {
   return (
     typeof error === 'object' &&
     error !== null &&
-    'status' in error &&
-    typeof (error as { status: unknown }).status === 'number'
+    'retryable' in error &&
+    (error as { retryable: unknown }).retryable === false
   )
 }
 
@@ -27,16 +28,16 @@ export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       /*
-       * Reintentar un 4xx es tirar peticiones a la basura: un 409 (hueco ya reservado) o un
-       * 429 (rate limit del backend) no cambian porque insistas, y con el 429 solo empeoras.
-       * Los fallos de red y los 5xx sí merecen otra oportunidad — el backend corre en el
-       * plan gratuito de Render y su arranque en frío ronda los 40 s, así que la primera
-       * petición de una visita puede caer por timeout con el servicio perfectamente sano.
+       * Insistir en un 4xx es tirar peticiones a la basura: un 409 (hueco ya reservado) o
+       * un 429 (rate limit del backend) no cambian por repetir, y con el 429 solo empeoras.
+       * Tampoco se reintenta una respuesta que incumple el contrato: si al backend le
+       * falta un campo, le seguirá faltando. Los fallos de red y los 5xx sí merecen otra
+       * oportunidad — el backend corre en el plan gratuito de Render y su arranque en frío
+       * ronda los 40 s, así que la primera petición de una visita puede caer por timeout
+       * con el servicio perfectamente sano.
        */
       retry: (failureCount, error) => {
-        if (hasHttpStatus(error) && error.status >= 400 && error.status < 500) {
-          return false
-        }
+        if (isNonRetryable(error)) return false
         return failureCount < 2
       },
       // La disponibilidad cambia cuando otro reserva, no cada segundo. Medio minuto evita
