@@ -37,9 +37,9 @@ y la base de datos es Neon Postgres.
 configuración, Docker), Alembic con sus migraciones, los modelos de configuración de dominio
 (tipos de cita y disponibilidad) y su seed, más los workflows de CI. `frontend/` tiene el
 andamiaje de Vite + React + TypeScript con Tailwind, la separación de carpetas entre UI y
-lógica, y un store de Zustand de ejemplo; sigue sin rutas ni páginas, y TanStack Query llega
-en su propio PR. Con ese andamiaje despertó la CI del frontend, que hasta entonces estaba
-escrita pero dormida.
+lógica, un store de Zustand de ejemplo y el `QueryClientProvider` de TanStack Query; sigue
+sin rutas, sin páginas y sin cliente HTTP. Con ese andamiaje despertó la CI del frontend,
+que hasta entonces estaba escrita pero dormida.
 
 ## Comandos que NO debes ejecutar
 
@@ -243,6 +243,15 @@ tocan nunca datos reales y no aplican a Neon (staging/producción).
   duplicarlo es cómo se queda obsoleto sin que nadie se entere. Los componentes leen con un
   selector por dato (`useUiStore((state) => state.isMobileMenuOpen)`), no el store entero,
   para no re-renderizar con cada cambio ajeno.
+- **Estado de servidor**: `src/lib/queryClient.ts` construye el `QueryClient` con las
+  opciones por defecto de toda la aplicación, y `main.tsx` lo cuelga de un
+  `QueryClientProvider`. Se instancia a nivel de módulo, no dentro de un componente: la
+  caché vive en esa instancia y recrearla en cada render la tiraría entera. Los dos
+  defaults que importan: **no se reintenta un 4xx** — un 409 de hueco ya reservado o un 429
+  del rate limiter no cambian por insistir, y con el 429 se empeora — mientras que los
+  fallos de red y los 5xx se reintentan dos veces, porque el arranque en frío de Render
+  (~40 s) hace caer la primera petición de una visita con el servicio sano; y un
+  `staleTime` de 30 s, que cada consulta sobreescribe si lo suyo es más volátil.
 - `docker-compose.yml` (raíz del repo) une `backend` + `postgres` solo para desarrollo local
   — producción usa Render + Neon, no este compose.
 
