@@ -36,10 +36,10 @@ y la base de datos es Neon Postgres.
 `backend/` tiene el esqueleto de la aplicación (instancia de `FastAPI`, `/health`,
 configuración, Docker), Alembic con sus migraciones, los modelos de configuración de dominio
 (tipos de cita y disponibilidad) y su seed, más los workflows de CI. `frontend/` tiene el
-andamiaje de Vite + React + TypeScript y poco más: un componente raíz de relleno, sin rutas
-ni páginas todavía, y sin Tailwind, Zustand ni TanStack Query — cada uno llega en su propio
-PR. Con ese andamiaje despertó la CI del frontend, que hasta entonces estaba escrita pero
-dormida.
+andamiaje de Vite + React + TypeScript con Tailwind, la separación de carpetas entre UI y
+lógica, y un store de Zustand de ejemplo; sigue sin rutas ni páginas, y TanStack Query llega
+en su propio PR. Con ese andamiaje despertó la CI del frontend, que hasta entonces estaba
+escrita pero dormida.
 
 ## Comandos que NO debes ejecutar
 
@@ -231,6 +231,18 @@ tocan nunca datos reales y no aplican a Neon (staging/producción).
   `tsconfig.node.json` (`vite.config.ts`), y por eso el typecheck es `tsc -b` y no `tsc`.
   Solo las variables de entorno con prefijo `VITE_` llegan al navegador, así que ahí no va
   nunca un secreto.
+- **Capas del frontend**: `src/api/` es el cliente HTTP y una función tipada por endpoint,
+  `src/components/` son componentes de presentación puros (props en, JSX fuera, sin tocar
+  `api/` ni TanStack Query), `src/features/` es la lógica por área — los hooks que envuelven
+  TanStack Query y los stores de Zustand — y `src/lib/` las utilidades transversales. Cada
+  carpeta lleva esa regla escrita en su `.gitkeep`.
+- **Estado de cliente**: los stores de Zustand viven en `src/features/<área>/`, uno por área
+  (`features/ui/uiStore.ts` es el primero, todavía de ejemplo). Guardan **solo** lo que
+  decide el usuario mientras navega: un menú desplegado, un filtro elegido, el paso de un
+  asistente. Nada que venga de la API entra en un store — eso es de TanStack Query, y
+  duplicarlo es cómo se queda obsoleto sin que nadie se entere. Los componentes leen con un
+  selector por dato (`useUiStore((state) => state.isMobileMenuOpen)`), no el store entero,
+  para no re-renderizar con cada cambio ajeno.
 - `docker-compose.yml` (raíz del repo) une `backend` + `postgres` solo para desarrollo local
   — producción usa Render + Neon, no este compose.
 
