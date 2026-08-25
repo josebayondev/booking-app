@@ -1,3 +1,44 @@
 /* Punto de entrada de estilos: activa Tailwind. El sistema de diseño real llega en un
    FEAT posterior; hoy solo hace falta que las clases de utilidad estén disponibles. */
 @import 'tailwindcss';
+
+@theme {
+  /* Fondo de página: un tono cashmere -- entre beige y gris --, ni el gris apenas
+     templado de `stone-50` ni un beige que tire a amarillo. */
+  --color-page: #f3f1eb;
+  /* Superficies (tarjetas, chips, botones claros): un blanco roto, no el `#fff` puro que
+     revienta de contraste sobre el beige de la página. */
+  --color-surface: #fdfcf8;
+}
+
+/* Fondo cálido para toda la app -- nunca blanco puro de fondo, para que las superficies
+   (bg-surface) se distingan de la página por elevación en vez de por contraste seco. */
+@layer base {
+  body {
+    @apply bg-page text-stone-900;
+  }
+}
+
+/* Usado por el shimmer de los estados de carga (AppointmentTypeCardSkeleton). */
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* Entrada del contenido de página: un fundido con una pequeña subida, al cargar y en
+   cada cambio de ruta (ver el `key={pathname}` en App.tsx). Fuera del media query para
+   quien pide menos movimiento -- para esa persona el contenido aparece ya resuelto,
+   nunca a medio animar. */
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .animate-fade-up {
+    animation: fadeUp 3.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+}
