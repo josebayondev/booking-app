@@ -102,13 +102,18 @@ npm run dev                     # servidor de desarrollo: http://localhost:5173
 npm run lint                    # oxlint + prettier --check
 npm run format                  # reescribe el formato con prettier
 npm run typecheck               # tsc -b, en modo estricto
+npm test                        # vitest run -- una pasada y sale
+npm run test:watch              # vitest en watch, para desarrollar
 npm run build                   # tsc -b && vite build
 npm audit --audit-level=high    # audita las deps bloqueadas
 ```
 
-`npm run lint` encadena `prettier --check` a propósito. `frontend-ci.yml` solo sabe invocar
-`lint`, `typecheck` y `build`, así que meter el formato dentro de `lint` es lo que hace que
-la CI lo verifique sin tener que tocar el workflow ni añadir un job.
+`npm run lint` encadena `prettier --check` a propósito: meter el formato dentro de `lint`
+es lo que hace que la CI lo verifique sin añadir un job solo para eso. Un job sí hizo falta
+para los tests — `frontend-ci.yml` invoca `lint`, `typecheck`, `test`, `build` y `audit`
+encadenados, y cada uno solo corre si el anterior pasó. Ojo con el script: `npm test` es
+`vitest run` y no `vitest`, porque el modo watch dejaría el job colgado hasta morir por
+timeout en vez de fallar.
 
 ## Docker / entorno local
 
@@ -248,6 +253,14 @@ tocan nunca datos reales y no aplican a Neon (staging/producción).
   confirmación aterriza ahí, y sin ella se quedaría mirando un layout vacío. Y ojo al
   desplegar: un SPA necesita que el hosting devuelva `index.html` en cualquier ruta, o
   entrar directo a `/cita/<token>` — que es justo la URL del email — da un 404.
+- **Tests del frontend**: **Vitest** con Testing Library y `jsdom`, configurado dentro de
+  `vite.config.ts` (importando `defineConfig` de `vitest/config`, que es el mismo de Vite
+  más la clave `test`) para que tests y aplicación compartan un solo pipeline. Los ficheros
+  van junto a lo que prueban, como `*.test.ts(x)`, igual que en el backend. **Sin
+  `globals: true`**: cada test importa `describe`/`it`/`expect`, con lo que nada aparece por
+  arte de magia y el tsconfig no necesita declarar tipos globales — a cambio, la limpieza
+  automática de Testing Library hay que engancharla a mano en `src/test/setup.ts`, que es
+  justo lo que hace ese fichero.
 - **Estado de cliente**: los stores de Zustand viven en `src/features/<área>/`, uno por área
   (`features/ui/uiStore.ts` es el primero, todavía de ejemplo). Guardan **solo** lo que
   decide el usuario mientras navega: un menú desplegado, un filtro elegido, el paso de un
