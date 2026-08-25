@@ -246,12 +246,30 @@ tocan nunca datos reales y no aplican a Neon (staging/producción).
 - **Estado de servidor**: `src/lib/queryClient.ts` construye el `QueryClient` con las
   opciones por defecto de toda la aplicación, y `main.tsx` lo cuelga de un
   `QueryClientProvider`. Se instancia a nivel de módulo, no dentro de un componente: la
-  caché vive en esa instancia y recrearla en cada render la tiraría entera. Los dos
-  defaults que importan: **no se reintenta un 4xx** — un 409 de hueco ya reservado o un 429
-  del rate limiter no cambian por insistir, y con el 429 se empeora — mientras que los
-  fallos de red y los 5xx se reintentan dos veces, porque el arranque en frío de Render
-  (~40 s) hace caer la primera petición de una visita con el servicio sano; y un
-  `staleTime` de 30 s, que cada consulta sobreescribe si lo suyo es más volátil.
+  caché vive en esa instancia y recrearla en cada render la tiraría entera. Un `staleTime`
+  de 30 s, que cada consulta sobreescribe si lo suyo es más volátil, y un `retry` que
+  respeta la marca `retryable` de los errores: **no se reintenta lo que no va a cambiar**
+  — un 409 de hueco ya reservado, un 429 del rate limiter (donde insistir empeora las
+  cosas) ni una respuesta que incumple su schema — mientras que los fallos de red y los
+  5xx se reintentan dos veces, porque el arranque en frío de Render (~40 s) hace caer la
+  primera petición de una visita con el servicio sano. La comprobación es **estructural**,
+  no un `instanceof`: `lib/` no puede importar de `api/`, así que la capa de servicios
+  marca sus errores y aquí solo se lee la marca.
+- **Capa de API**: `src/api/http.ts` envuelve el `fetch` nativo — nada de axios, que no
+  aportaría nada sobre lo que TanStack Query ya resuelve y sería una dependencia más que
+  auditar. Cada endpoint es una función (`getAppointmentTypes()`,
+  `getAvailability(params)`) que declara su **schema de Zod**, y ese schema es la única
+  fuente: el tipo sale de `z.infer`, nunca se escribe una interfaz gemela al lado. La
+  validación en runtime no es ceremonia — los tipos de TypeScript se borran al compilar, y
+  sin ella un campo renombrado en el backend viaja sin ruido hasta reventar tres
+  componentes más abajo; con ella falla en el borde, como `ApiContractError`, diciendo qué
+  endpoint y qué campo. Los errores de negocio del backend (`{code, detail}` de
+  `app/core/errors.py`) llegan como `ApiError`, con su `status`. La frontera snake_case →
+  camelCase se cruza **una sola vez**, en el `transform` de cada schema. Los instantes se
+  convierten a `Date` ahí mismo (es el borde donde este proyecto convierte tiempo), pero
+  el día natural se queda en texto `YYYY-MM-DD`: no es un instante sino la etiqueta del
+  día en la zona del dueño, y pasarlo por `Date` lo clavaría a medianoche UTC y le pintaría
+  el día anterior a quien reserve desde Canarias o Argentina.
 - `docker-compose.yml` (raíz del repo) une `backend` + `postgres` solo para desarrollo local
   — producción usa Render + Neon, no este compose.
 
