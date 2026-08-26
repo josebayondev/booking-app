@@ -1,17 +1,11 @@
 // Ruta `/`: la landing pública -- quién soy, qué ofrezco y la llamada a reservar.
-//
-// Los tipos de cita son datos de ejemplo por ahora (MOCK_APPOINTMENT_TYPES): el hook real
-// de `features/appointmentTypes/`, que pega a `GET /api/v1/appointment-types`, llega en el
-// siguiente paso de este mismo FEAT y sustituye este bloque sin tocar el resto de la
-// página -- `isLoadingAppointmentTypes` es exactamente el hueco donde entra
-// `query.isLoading`.
 import { Link } from 'react-router'
 
-import type { AppointmentType } from '../api/appointmentTypes'
 import AppointmentTypeCard from '../components/AppointmentTypeCard'
 import AppointmentTypeCardSkeleton from '../components/AppointmentTypeCardSkeleton'
 import HeroPhoto from '../components/HeroPhoto'
 import { CalendarIcon, ClockIcon, ListIcon } from '../components/icons'
+import { useAppointmentTypes } from '../features/appointmentTypes/useAppointmentTypes.ts'
 
 const FEATURES = [
   {
@@ -31,25 +25,14 @@ const FEATURES = [
   },
 ]
 
-const MOCK_APPOINTMENT_TYPES: AppointmentType[] = [
-  {
-    slug: 'consulta-inicial',
-    name: 'Consulta inicial',
-    description:
-      'Primera toma de contacto: qué necesitas y cómo puedo ayudarte.',
-    durationMinutes: 30,
-  },
-  {
-    slug: 'seguimiento',
-    name: 'Seguimiento',
-    description: 'Para retomar una conversación ya empezada.',
-    durationMinutes: 45,
-  },
-]
-
-const isLoadingAppointmentTypes = false
-
 export default function LandingPage() {
+  const {
+    data: appointmentTypes,
+    isLoading: isLoadingAppointmentTypes,
+    isError: isAppointmentTypesError,
+    refetch: refetchAppointmentTypes,
+  } = useAppointmentTypes()
+
   return (
     <div className="flex flex-col gap-24">
       <section className="grid items-center gap-16 pt-20 lg:grid-cols-12 lg:gap-8">
@@ -122,7 +105,22 @@ export default function LandingPage() {
           Cada tipo de cita tiene su propia duración. Elige el que mejor encaje.
         </p>
 
-        {MOCK_APPOINTMENT_TYPES.length === 0 && !isLoadingAppointmentTypes ? (
+        {isAppointmentTypesError ? (
+          <div className="mt-8 flex flex-col items-start gap-3 rounded-2xl border border-black/8 bg-surface p-6">
+            <p className="text-stone-600">
+              No se han podido cargar los tipos de cita. Puede que el servicio
+              esté arrancando -- inténtalo de nuevo en unos segundos.
+            </p>
+            <button
+              type="button"
+              onClick={() => void refetchAppointmentTypes()}
+              className="inline-flex items-center rounded-xl border border-black/8 bg-page px-4 py-2 text-sm font-semibold text-stone-700 transition-colors hover:bg-stone-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-900"
+            >
+              Reintentar
+            </button>
+          </div>
+        ) : !isLoadingAppointmentTypes &&
+          (appointmentTypes === undefined || appointmentTypes.length === 0) ? (
           <p className="mt-8 text-stone-500">
             Todavía no hay tipos de cita configurados.
           </p>
@@ -132,7 +130,7 @@ export default function LandingPage() {
               ? Array.from({ length: 3 }, (_, index) => (
                   <AppointmentTypeCardSkeleton key={index} />
                 ))
-              : MOCK_APPOINTMENT_TYPES.map((type) => (
+              : appointmentTypes?.map((type) => (
                   <AppointmentTypeCard
                     key={type.slug}
                     type={type}

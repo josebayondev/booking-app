@@ -1,6 +1,6 @@
 // Cabecera común de la aplicación: fija arriba del viewport en todas las páginas -- no se
-// pierde al hacer scroll --, con el monograma con el enlace al inicio y el botón
-// persistente de "Reservar cita".
+// pierde al hacer scroll --, con el monograma con el enlace al inicio, la entrada
+// discreta al panel de administración y el botón persistente de "Reservar cita".
 import { Link } from 'react-router'
 
 export default function Header() {
@@ -16,12 +16,21 @@ export default function Header() {
           </span>
         </Link>
 
-        <Link
-          to="/reservar"
-          className="inline-flex items-center rounded-xl bg-stone-900 px-4 py-2 text-sm font-semibold text-white transition-[transform,box-shadow] duration-200 ease-[cubic-bezier(.16,1,.3,1)] hover:-translate-y-0.5 hover:shadow-[0_12px_24px_-10px_rgba(0,0,0,.35)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-900"
-        >
-          Reservar cita
-        </Link>
+        <div className="flex items-center gap-4">
+          <Link
+            to="/admin/login"
+            className="hidden text-xs font-medium text-stone-400 transition-colors hover:text-stone-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-900 sm:inline-flex"
+          >
+            Acceder como admin
+          </Link>
+
+          <Link
+            to="/reservar"
+            className="inline-flex items-center rounded-xl bg-stone-900 px-4 py-2 text-sm font-semibold text-white transition-[transform,box-shadow] duration-200 ease-[cubic-bezier(.16,1,.3,1)] hover:-translate-y-0.5 hover:shadow-[0_12px_24px_-10px_rgba(0,0,0,.35)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-900"
+          >
+            Reservar cita
+          </Link>
+        </div>
       </div>
     </header>
   )
