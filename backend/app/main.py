@@ -13,6 +13,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.availability import router as availability_router
+from app.api.bookings import router as bookings_router
 from app.api.health import router as health_router
 from app.core.config import get_settings
 from app.core.db import check_db_connection
@@ -83,3 +84,4 @@ register_error_handlers(app)
 
 app.include_router(health_router)
 app.include_router(availability_router)
+app.include_router(bookings_router)

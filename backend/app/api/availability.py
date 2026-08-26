@@ -14,6 +14,7 @@ ahora que solo hay dos rutas.
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from typing import Annotated
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy import ColumnElement, ColumnExpressionArgument, func, literal_column, select
@@ -25,7 +26,7 @@ from app.core.timezone import booking_timezone, local_day_bounds, utc_now, utc_t
 from app.models import AppointmentType, AvailabilityException, AvailabilityRule, Booking
 from app.schemas.appointment_type import AppointmentTypeOut
 from app.schemas.availability import AvailabilityQuery, DayAvailabilityOut, FreeSlotOut
-from app.services.availability import BookingWithBuffer, compute_free_slots
+from app.services.availability import BookingWithBuffer, FreeSlot, compute_free_slots
 
 router = APIRouter(prefix="/api/v1")
 
@@ -61,6 +62,73 @@ def _overlaps(
     """
     return func.tstzrange(start_column, end_column, _RANGE_BOUNDS).bool_op("&&")(
         func.tstzrange(window_start, window_end, _RANGE_BOUNDS)
+    )
+
+
+def fetch_free_slots(
+    db: Session,
+    appointment_type: AppointmentType,
+    window_start: date,
+    window_end: date,
+    tz: ZoneInfo,
+    now: datetime,
+) -> list[FreeSlot]:
+    """Reúne reglas, excepciones y reservas de Postgres para `window_start..window_end`
+    y llama a `compute_free_slots`.
+
+    Compartida entre `GET /availability` (un rango de días) y `POST /bookings` (un solo
+    día, para revalidar el instante propuesto): la consulta es idéntica, solo cambia la
+    ventana -- y así el pre-check de la reserva no puede divergir nunca de lo que la API
+    ofrece como libre.
+    """
+    if window_end < window_start:
+        return []
+
+    fetch_start, _ = local_day_bounds(window_start, tz)
+    _, fetch_end = local_day_bounds(window_end, tz)
+
+    rules = db.scalars(select(AvailabilityRule).where(AvailabilityRule.is_active.is_(True))).all()
+
+    # A diferencia de Booking, esta tabla no tiene índice GiST -- solo un índice b-tree
+    # normal en starts_at -- así que aquí sí conviene la comparación sargable en vez de
+    # _overlaps(): starts_at < fetch_end puede usar ese índice, mientras que el operador
+    # && no puede usar ninguno sin un índice de expresión que lo respalde.
+    exceptions = db.scalars(
+        select(AvailabilityException).where(
+            AvailabilityException.starts_at < fetch_end,
+            AvailabilityException.ends_at > fetch_start,
+        )
+    ).all()
+
+    booking_rows = db.execute(
+        select(Booking.starts_at, Booking.ends_at, Booking.status, AppointmentType.buffer_minutes)
+        .join(AppointmentType, Booking.appointment_type_id == AppointmentType.id)
+        .where(
+            # El índice GiST es parcial sobre `status <> 'cancelled'`; Postgres deduce
+            # que `= 'confirmed'` lo implica y lo usa igual. Se filtra por el valor exacto
+            # y no por `<> 'cancelled'` porque es lo que significa de verdad "esta reserva
+            # ocupa el hueco", y seguiría siendo correcto si algún día apareciese un
+            # tercer estado.
+            Booking.status == "confirmed",
+            _overlaps(Booking.starts_at, Booking.ends_at, fetch_start, fetch_end),
+        )
+    ).all()
+    bookings = [
+        BookingWithBuffer(
+            starts_at=starts_at, ends_at=ends_at, status=status, buffer_minutes=buffer_minutes
+        )
+        for starts_at, ends_at, status, buffer_minutes in booking_rows
+    ]
+
+    return compute_free_slots(
+        appointment_type=appointment_type,
+        rules=rules,
+        exceptions=exceptions,
+        bookings=bookings,
+        window_start=window_start,
+        window_end=window_end,
+        now=now,
+        tz=tz,
     )
 
 
@@ -101,63 +169,9 @@ def get_availability(
     window_end = min(query.date_to, latest_bookable_date)
 
     slots_by_day: dict[date, list[FreeSlotOut]] = defaultdict(list)
-
-    if window_end >= query.date_from:
-        fetch_start, _ = local_day_bounds(query.date_from, tz)
-        _, fetch_end = local_day_bounds(window_end, tz)
-
-        rules = db.scalars(
-            select(AvailabilityRule).where(AvailabilityRule.is_active.is_(True))
-        ).all()
-
-        # A diferencia de Booking, esta tabla no tiene índice GiST -- solo un índice
-        # b-tree normal en starts_at -- así que aquí sí conviene la comparación sargable
-        # en vez de _overlaps(): starts_at < fetch_end puede usar ese índice, mientras que
-        # el operador && no puede usar ninguno sin un índice de expresión que lo respalde.
-        exceptions = db.scalars(
-            select(AvailabilityException).where(
-                AvailabilityException.starts_at < fetch_end,
-                AvailabilityException.ends_at > fetch_start,
-            )
-        ).all()
-
-        booking_rows = db.execute(
-            select(
-                Booking.starts_at, Booking.ends_at, Booking.status, AppointmentType.buffer_minutes
-            )
-            .join(AppointmentType, Booking.appointment_type_id == AppointmentType.id)
-            .where(
-                # El índice GiST es parcial sobre `status <> 'cancelled'`; Postgres deduce
-                # que `= 'confirmed'` lo implica y lo usa igual. Se filtra por el valor
-                # exacto y no por `<> 'cancelled'` porque es lo que significa de verdad
-                # "esta reserva ocupa el hueco", y seguiría siendo correcto si algún día
-                # apareciese un tercer estado.
-                Booking.status == "confirmed",
-                _overlaps(Booking.starts_at, Booking.ends_at, fetch_start, fetch_end),
-            )
-        ).all()
-        bookings = [
-            BookingWithBuffer(
-                starts_at=starts_at, ends_at=ends_at, status=status, buffer_minutes=buffer_minutes
-            )
-            for starts_at, ends_at, status, buffer_minutes in booking_rows
-        ]
-
-        slots = compute_free_slots(
-            appointment_type=appointment_type,
-            rules=rules,
-            exceptions=exceptions,
-            bookings=bookings,
-            window_start=query.date_from,
-            window_end=window_end,
-            now=now,
-            tz=tz,
-        )
-        for slot in slots:
-            slot_day = utc_to_local_date(slot.starts_at, tz)
-            slots_by_day[slot_day].append(
-                FreeSlotOut(starts_at=slot.starts_at, ends_at=slot.ends_at)
-            )
+    for slot in fetch_free_slots(db, appointment_type, query.date_from, window_end, tz, now):
+        slot_day = utc_to_local_date(slot.starts_at, tz)
+        slots_by_day[slot_day].append(FreeSlotOut(starts_at=slot.starts_at, ends_at=slot.ends_at))
 
     # Un DayAvailabilityOut por cada día pedido, incluso sin huecos -- para que el
     # frontend pinte el mes de un tirón sin tener que rellenar los días que faltan.
