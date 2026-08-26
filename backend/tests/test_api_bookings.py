@@ -4,13 +4,13 @@ Usan api_client (tests/conftest.py), no client: el endpoint necesita ver dentro 
 misma transacción las filas que cada test prepara con db_session.
 """
 
-from datetime import date, time
+from datetime import UTC, date, datetime, time
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.models import AppointmentType, AvailabilityRule
+from app.models import AppointmentType, AvailabilityRule, Booking
 
 
 def _appointment_type(**overrides: object) -> AppointmentType:
@@ -49,6 +49,17 @@ def _payload(**overrides: object) -> dict[str, object]:
         "customer_email": "ada@example.com",
     }
     return defaults | overrides
+
+
+def _booking(appointment_type_id: int, **overrides: object) -> Booking:
+    defaults: dict[str, object] = {
+        "appointment_type_id": appointment_type_id,
+        "customer_name": "Ada Lovelace",
+        "customer_email": "ada@example.com",
+        "starts_at": datetime(2026, 9, 7, 8, 0, tzinfo=UTC),
+        "ends_at": datetime(2026, 9, 7, 8, 30, tzinfo=UTC),
+    }
+    return Booking(**(defaults | overrides))
 
 
 @pytest.mark.db
@@ -141,3 +152,98 @@ class TestCreateBooking:
 
         assert second.status_code == 409
         assert second.json()["code"] == "slot_unavailable"
+
+
+@pytest.mark.db
+class TestGetBooking:
+    def test_returns_the_booking_by_token(
+        self, db_session: Session, api_client: TestClient
+    ) -> None:
+        appointment_type = _appointment_type()
+        db_session.add(appointment_type)
+        db_session.flush()
+        booking = _booking(appointment_type.id)
+        db_session.add(booking)
+        db_session.flush()
+
+        response = api_client.get(f"/api/v1/bookings/{booking.token}")
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "token": booking.token,
+            "reference": booking.reference,
+            "status": "confirmed",
+            "starts_at": "2026-09-07T08:00:00Z",
+            "ends_at": "2026-09-07T08:30:00Z",
+            "customer_name": "Ada Lovelace",
+            "appointment_type_name": "Reunión inicial",
+        }
+
+    def test_returns_404_for_an_unknown_token(self, api_client: TestClient) -> None:
+        response = api_client.get("/api/v1/bookings/no-existe-este-token")
+
+        assert response.status_code == 404
+        assert response.json() == {
+            "code": "booking_not_found",
+            "detail": "No existe ninguna reserva con ese token.",
+        }
+
+
+@pytest.mark.db
+class TestCancelBooking:
+    def test_cancels_a_confirmed_booking(self, db_session: Session, api_client: TestClient) -> None:
+        appointment_type = _appointment_type()
+        db_session.add(appointment_type)
+        db_session.flush()
+        booking = _booking(appointment_type.id)
+        db_session.add(booking)
+        db_session.flush()
+
+        response = api_client.post(f"/api/v1/bookings/{booking.token}/cancel")
+
+        assert response.status_code == 200
+        assert response.json()["status"] == "cancelled"
+
+    def test_cancelling_twice_is_idempotent(
+        self, db_session: Session, api_client: TestClient
+    ) -> None:
+        appointment_type = _appointment_type()
+        db_session.add(appointment_type)
+        db_session.flush()
+        booking = _booking(appointment_type.id)
+        db_session.add(booking)
+        db_session.flush()
+
+        first = api_client.post(f"/api/v1/bookings/{booking.token}/cancel")
+        second = api_client.post(f"/api/v1/bookings/{booking.token}/cancel")
+
+        assert first.status_code == 200
+        assert second.status_code == 200
+        assert first.json()["status"] == second.json()["status"] == "cancelled"
+
+    def test_cancelling_frees_the_slot_for_a_new_booking(
+        self, db_session: Session, api_client: TestClient
+    ) -> None:
+        appointment_type = _appointment_type()
+        db_session.add(appointment_type)
+        db_session.add(_rule())
+        db_session.flush()
+        booking = _booking(appointment_type.id)
+        db_session.add(booking)
+        db_session.flush()
+
+        # Antes de cancelar, el hueco está ocupado.
+        blocked = api_client.post("/api/v1/bookings", json=_payload())
+        assert blocked.status_code == 409
+
+        cancel = api_client.post(f"/api/v1/bookings/{booking.token}/cancel")
+        assert cancel.status_code == 200
+
+        rebooked = api_client.post("/api/v1/bookings", json=_payload())
+        assert rebooked.status_code == 201
+
+    def test_returns_404_for_an_unknown_token(self, api_client: TestClient) -> None:
+        response = api_client.post("/api/v1/bookings/no-existe-este-token/cancel")
+
+        assert response.status_code == 404
+        assert response.json()["code"] == "booking_not_found"

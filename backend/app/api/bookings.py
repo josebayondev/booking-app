@@ -16,7 +16,7 @@ from app.core.db import get_db
 from app.core.errors import ApiError
 from app.core.timezone import booking_timezone, utc_now, utc_to_local_date
 from app.models import AppointmentType, Booking
-from app.schemas.booking import BookingCreate, BookingOut
+from app.schemas.booking import BookingCreate, BookingDetailOut, BookingOut
 
 router = APIRouter(prefix="/api/v1")
 
@@ -72,3 +72,63 @@ def create_booking(
 
     response.headers["Location"] = f"/api/v1/bookings/{booking.token}"
     return booking
+
+
+# La página a la que apunta el enlace del email: GET /bookings/{token}, sin autenticación
+# -- el token opaco es la única llave (ver app/models/booking.py).
+@router.get("/bookings/{token}", response_model=BookingDetailOut)
+def get_booking(token: str, db: Annotated[Session, Depends(get_db)]) -> BookingDetailOut:
+    # 1. Buscar la reserva por su token, con el nombre de su tipo de cita en la misma
+    # consulta -- Booking no tiene relationship a AppointmentType, solo la FK. Un token
+    # desconocido da el mismo 404 que cualquier otro caso: nunca un 403 ni un mensaje
+    # distinto, que sería un oráculo para enumerar reservas ajenas (11.1).
+    row = db.execute(
+        select(Booking, AppointmentType.name)
+        .join(AppointmentType, Booking.appointment_type_id == AppointmentType.id)
+        .where(Booking.token == token)
+    ).one_or_none()
+    if row is None:
+        raise ApiError(404, "booking_not_found", "No existe ninguna reserva con ese token.")
+    booking, appointment_type_name = row
+
+    # 2. Forma pública: sin el id interno ni el email, que ya conoce quien consulta.
+    return BookingDetailOut(
+        token=booking.token,
+        reference=booking.reference,
+        status=booking.status,
+        starts_at=booking.starts_at,
+        ends_at=booking.ends_at,
+        customer_name=booking.customer_name,
+        appointment_type_name=appointment_type_name,
+    )
+
+
+@router.post("/bookings/{token}/cancel", response_model=BookingDetailOut)
+def cancel_booking(token: str, db: Annotated[Session, Depends(get_db)]) -> BookingDetailOut:
+    # 1. Buscar la reserva por su token (mismo 404 uniforme que GET /bookings/{token}).
+    row = db.execute(
+        select(Booking, AppointmentType.name)
+        .join(AppointmentType, Booking.appointment_type_id == AppointmentType.id)
+        .where(Booking.token == token)
+    ).one_or_none()
+    if row is None:
+        raise ApiError(404, "booking_not_found", "No existe ninguna reserva con ese token.")
+    booking, appointment_type_name = row
+
+    # 2. Cambio de estado, no un borrado: la fila se conserva para los dashboards.
+    # Idempotente a propósito -- cancelar algo ya cancelado devuelve 200 con el mismo
+    # estado, no un error. El hueco queda libre al instante porque el EXCLUDE de Booking
+    # excluye las canceladas (WHERE status <> 'cancelled'), no hace falta nada más aquí.
+    booking.status = "cancelled"
+    db.commit()
+    db.refresh(booking)
+
+    return BookingDetailOut(
+        token=booking.token,
+        reference=booking.reference,
+        status=booking.status,
+        starts_at=booking.starts_at,
+        ends_at=booking.ends_at,
+        customer_name=booking.customer_name,
+        appointment_type_name=appointment_type_name,
+    )

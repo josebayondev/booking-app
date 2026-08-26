@@ -46,3 +46,17 @@ class BookingOut(BaseModel):
     reference: str
     starts_at: datetime
     ends_at: datetime
+
+
+class BookingDetailOut(BaseModel):
+    """La vista completa de una reserva: la página a la que apunta el enlace del email
+    (GET /bookings/{token}) y lo que devuelve cancelarla. Sin customer_email -- quien
+    tiene el token ya sabe su propio email, no hace falta devolvérselo."""
+
+    token: str
+    reference: str
+    status: str
+    starts_at: datetime
+    ends_at: datetime
+    customer_name: str
+    appointment_type_name: str
