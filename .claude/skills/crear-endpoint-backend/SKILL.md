@@ -21,10 +21,28 @@ patrón aquí — que cada uno se lea de un tirón sin saltar de función en fun
 
 ## Cuándo SÍ extraer una función aparte
 
-Solo cuando la lógica se **reutiliza de verdad entre dos o más rutas**. El ejemplo real
-del proyecto es `fetch_free_slots` (`app/api/availability.py`): la usan tanto
-`GET /availability` como `POST /bookings`, así que vive fuera y las dos la importan. Si
-solo la llama un endpoint, se queda dentro de él aunque sean quince líneas.
+**Que la use más de una ruta no basta por sí solo.** El criterio real es si duplicarla
+puede hacer que dos endpoints diverjan en algo que importa. Dos ejemplos reales del
+proyecto, con el mismo "se usa en dos rutas" pero decisiones opuestas:
+
+- **`fetch_free_slots`** (`app/api/availability.py`) — compartida entre `GET
+  /availability` y `POST /bookings`. Aquí sí hace falta: el ticket original pedía
+  explícitamente *"cero divergencia entre lo que la API ofrece y lo que acepta"*. Si cada
+  endpoint calculase los huecos libres a su manera, arreglar un filtro o un bug de solape
+  en un sitio y olvidarlo en el otro dejaría a la API ofreciendo un hueco que luego
+  rechaza. Es una consulta sustancial (reglas + excepciones + reservas + llamada a
+  `compute_free_slots`) con una garantía de consistencia real detrás.
+- **Buscar una reserva por token** — se probó a compartir entre `GET /bookings/{token}`
+  y `POST /bookings/{token}/cancel`, y se deshizo: son ocho líneas de `SELECT` + `join`
+  sin ningún riesgo de divergencia detrás, y tener que saltar a otra función para leer un
+  endpoint costaba más de lo que ahorraba duplicar ese bloque. Se quedó dentro de cada
+  endpoint, tal cual, en las dos rutas.
+
+La pregunta a hacerse no es "¿la llama más de un sitio?" sino **"si esto se duplica y un
+día solo se actualiza en un sitio, ¿se rompe algo de verdad?"**. Si la respuesta es sí
+(dos rutas podrían acabar en desacuerdo sobre datos, un cálculo, una garantía de
+seguridad), se comparte. Si la respuesta es "quedaría repetido pero nada crítico
+depende de que estén sincronizados", se duplica y cada endpoint se queda autocontenido.
 
 Lógica de negocio genuinamente compleja (cálculo, no orquestación de una petición HTTP)
 sigue yendo a `app/services/` como siempre — eso no cambia, es la otra capa.
