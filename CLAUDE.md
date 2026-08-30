@@ -15,7 +15,9 @@ Las cuatro excepciones, y no hay más:
 - **`README.md`** se queda en inglés (es la cara pública del repositorio).
 - **Los identificadores del código** —nombres de funciones, variables, clases, columnas,
   rutas— siguen en inglés.
-- **Los nombres de rama y los mensajes de commit** siguen en inglés (ver "Convenciones").
+- **Los nombres de rama** siguen en inglés (ver "Convenciones"). Los mensajes de commit
+  van en español salvo el prefijo de Conventional Commits (`feat:`, `fix:`...), que es
+  vocabulario fijo y se queda en inglés.
 - **Los mensajes de `logger.*` de la aplicación** siguen en inglés: son salida operativa
   que acaba en Sentry y en los logs de Render, y hay tests que comprueban sus subcadenas.
   Esto **no** incluye los mensajes de `assert` ni de `pytest.fail`, que explican algo a
@@ -294,17 +296,22 @@ tocan nunca datos reales y no aplican a Neon (staging/producción).
   convierten a `Date` ahí mismo (es el borde donde este proyecto convierte tiempo), pero
   el día natural se queda en texto `YYYY-MM-DD`: no es un instante sino la etiqueta del
   día en la zona del dueño, y pasarlo por `Date` lo clavaría a medianoche UTC y le pintaría
-  el día anterior a quien reserve desde Canarias o Argentina.
+  el día anterior a quien reserve desde Canarias o Argentina. Las mutaciones (`POST`,
+  `createBooking()`) pasan por `mutate()`, hermana de `request()`: comparten la misma
+  validación de respuesta y traducción de errores a través de un `send()` interno, y solo
+  difieren en cómo arman la petición (`mutate()` manda `body` como JSON; `request()` no
+  lleva cuerpo, solo `searchParams`).
 - `docker-compose.yml` (raíz del repo) une `backend` + `postgres` solo para desarrollo local
   — producción usa Render + Neon, no este compose.
 
 ## Convenciones
 
 - **Comentarios, docstrings y documentación interna en español** (ver la sección "Idioma").
-- Identificadores del código, nombres de rama y mensajes de commit en **inglés**. Textos de
-  interfaz y emails en **español**.
-- Conventional Commits: `feat:`, `fix:`, `chore:`, `docs:`, `test:`, `refactor:` — mensajes
-  de commit de una sola línea.
+- Identificadores del código y nombres de rama en **inglés**. Mensajes de commit, textos
+  de interfaz y emails en **español**.
+- Conventional Commits: `feat:`, `fix:`, `chore:`, `docs:`, `test:`, `refactor:` — el
+  prefijo se queda en inglés (es vocabulario fijo), la descripción que sigue va en
+  español, y el mensaje es de una sola línea.
 - Type hints en todo el Python. TypeScript estricto en el frontend.
 
 ## Flujo de git
