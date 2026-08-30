@@ -72,25 +72,17 @@ function readApiErrorBody(
 }
 
 /**
- * Hace la petición y devuelve la respuesta ya validada y tipada.
- *
- * Los fallos de red se dejan salir tal cual (el `TypeError` de fetch): no llevan
- * `retryable`, así que el QueryClient los reintenta, que es justo lo que se quiere con el
- * arranque en frío de Render.
+ * El envío de la petición y la traducción de su respuesta, compartidos entre `request()` y
+ * `mutate()`: los dos validan contra el mismo schema y traducen un error igual, solo
+ * cambia cómo se construye la petición.
  */
-export async function request<TSchema extends z.ZodType>(
-  path: string,
+async function send<TSchema extends z.ZodType>(
+  url: URL,
+  init: RequestInit,
   schema: TSchema,
-  searchParams?: Record<string, string>,
+  path: string,
 ): Promise<z.infer<TSchema>> {
-  const url = new URL(`${apiBaseUrl()}/api/v1${path}`)
-  if (searchParams !== undefined) {
-    for (const [key, value] of Object.entries(searchParams)) {
-      url.searchParams.set(key, value)
-    }
-  }
-
-  const response = await fetch(url, { headers: { Accept: 'application/json' } })
+  const response = await fetch(url, init)
 
   if (!response.ok) {
     // Un 422 de FastAPI no tiene esta forma (lleva el detalle campo a campo de Pydantic) y
@@ -111,4 +103,53 @@ export async function request<TSchema extends z.ZodType>(
     throw new ApiContractError(path, result.error)
   }
   return result.data
+}
+
+/**
+ * Hace la petición y devuelve la respuesta ya validada y tipada.
+ *
+ * Los fallos de red se dejan salir tal cual (el `TypeError` de fetch): no llevan
+ * `retryable`, así que el QueryClient los reintenta, que es justo lo que se quiere con el
+ * arranque en frío de Render.
+ */
+export async function request<TSchema extends z.ZodType>(
+  path: string,
+  schema: TSchema,
+  searchParams?: Record<string, string>,
+): Promise<z.infer<TSchema>> {
+  const url = new URL(`${apiBaseUrl()}/api/v1${path}`)
+  if (searchParams !== undefined) {
+    for (const [key, value] of Object.entries(searchParams)) {
+      url.searchParams.set(key, value)
+    }
+  }
+
+  return send(url, { headers: { Accept: 'application/json' } }, schema, path)
+}
+
+/**
+ * Igual que `request()`, pero para las rutas que escriben: manda `body` como JSON por
+ * POST. No lleva `searchParams` porque ninguna mutación de esta aplicación los necesita
+ * todavía -- YAGNI hasta que haga falta.
+ */
+export async function mutate<TSchema extends z.ZodType>(
+  path: string,
+  schema: TSchema,
+  body: unknown,
+): Promise<z.infer<TSchema>> {
+  const url = new URL(`${apiBaseUrl()}/api/v1${path}`)
+
+  return send(
+    url,
+    {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    },
+    schema,
+    path,
+  )
 }

@@ -372,6 +372,12 @@ Este es un **repositorio público**.
   tipos, uv para gestionar dependencias (`uv.lock` se commitea).
 - Frontend: React + Vite + TypeScript, Zustand (estado global), TanStack Query (estado de
   servidor).
-- Tests: pytest (backend), Vitest (frontend). Los tests de lógica de negocio se escriben
-  junto a la lógica, no se aplazan a una fase posterior.
+- Tests: pytest (backend), Vitest (frontend). Los mínimos posibles, y solo donde hace
+  falta de verdad: lógica con reglas reales -- cálculo, concurrencia, traducción de
+  errores, conversión de zona horaria -- se prueba junto al código, sin aplazarlo a una
+  fase posterior. Un wrapper fino sobre una librería (un hook que solo envuelve
+  `useQuery`/`useMutation` sin lógica propia), un componente de presentación pura sin
+  ramas propias, o una página que solo compone no llevan test: no hay lógica que pueda
+  romperse, y el test solo acabaría probando que la librería funciona. Ante la duda, menos
+  tests y más deliberados -- no cobertura por cobertura.
 - CI/CD: los workflows están en `.github/workflows/` y corren automáticamente en cada PR.
