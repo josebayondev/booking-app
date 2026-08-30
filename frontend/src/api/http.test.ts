@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 
-import { ApiContractError, ApiError, request } from './http'
+import { ApiContractError, ApiError, mutate, request } from './http'
 
 const schema = z.object({ slug: z.string() })
 
@@ -117,6 +117,27 @@ describe('request', () => {
     const [url] = vi.mocked(fetch).mock.calls[0] ?? []
     expect(String(url)).toBe(
       'http://backend.test/api/v1/availability?type=consulta&from=2026-09-01',
+    )
+  })
+})
+
+describe('mutate', () => {
+  // Lo único que mutate() añade sobre request() es el método, el cuerpo y la cabecera --
+  // la validación y la traducción de errores las hace la misma send() interna, ya
+  // probada arriba, así que no hace falta repetir esos casos aquí.
+  it('manda POST con el cuerpo en JSON y devuelve los datos ya validados', async () => {
+    stubFetch({ slug: 'consulta-inicial' }, 201)
+
+    await expect(mutate('/algo', schema, { name: 'Jose' })).resolves.toEqual({
+      slug: 'consulta-inicial',
+    })
+
+    const [url, init] = vi.mocked(fetch).mock.calls[0] ?? []
+    expect(String(url)).toBe('http://backend.test/api/v1/algo')
+    expect(init?.method).toBe('POST')
+    expect(init?.body).toBe(JSON.stringify({ name: 'Jose' }))
+    expect(new Headers(init?.headers).get('Content-Type')).toBe(
+      'application/json',
     )
   })
 })
