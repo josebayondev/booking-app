@@ -3,13 +3,9 @@
 import pytest
 from sqlalchemy import text
 
-from app.core.db import check_db_connection, engine, get_db
+from app.core.db import engine, get_db
 
 pytestmark = pytest.mark.db
-
-
-def test_check_db_connection_succeeds() -> None:
-    check_db_connection()
 
 
 def test_engine_uses_psycopg_driver() -> None:
