@@ -46,3 +46,33 @@ class BookingOut(BaseModel):
     reference: str
     starts_at: datetime
     ends_at: datetime
+
+
+class BookingDetailOut(BaseModel):
+    """La vista completa de una reserva: la página a la que apunta el enlace del email
+    (GET /bookings/{token}) y lo que devuelven cancelarla o reprogramarla. Sin
+    customer_email -- quien tiene el token ya sabe su propio email, no hace falta
+    devolvérselo."""
+
+    token: str
+    reference: str
+    status: str
+    starts_at: datetime
+    ends_at: datetime
+    customer_name: str
+    appointment_type_name: str
+
+
+class BookingReschedule(BaseModel):
+    """Lo que manda el cliente para reprogramar: el nuevo hueco, ya visto libre en
+    GET /availability. El tipo de cita no cambia, solo el horario -- por eso no lleva
+    `type` como BookingCreate."""
+
+    starts_at: datetime
+
+    @field_validator("starts_at")
+    @classmethod
+    def starts_at_must_have_offset(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("starts_at debe incluir la zona horaria (offset ISO 8601)")
+        return value

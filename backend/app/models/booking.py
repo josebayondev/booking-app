@@ -33,8 +33,10 @@ class Booking(TimestampMixin, Base):
 
     Nace en confirmed y no en pending: un estado intermedio abandonado seguiría
     bloqueando el hueco -- el EXCLUDE de abajo no distingue pendiente de confirmado -- y
-    obligaría a purgar reservas fantasma. cancelled es el único destino posterior; no hay
-    tabla de reprogramaciones, PR 7 reprograma cancelando y creando una reserva nueva.
+    obligaría a purgar reservas fantasma. cancelled es el único estado posterior aparte de
+    reprogramada: reprogramar (13.4) actualiza starts_at/ends_at de esta misma fila, sin
+    tocar el token ni crear una reserva nueva -- si generase un token distinto, el enlace
+    que el cliente ya tiene en su email dejaría de servir justo cuando más lo necesita.
 
     starts_at/ends_at guardan la reunión real, sin el buffer_minutes de su
     appointment_type: ese colchón se aplica solo al calcular huecos libres (ver
