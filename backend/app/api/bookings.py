@@ -85,13 +85,13 @@ def get_booking(token: str, db: Annotated[Session, Depends(get_db)]) -> BookingD
     # desconocido da el mismo 404 que cualquier otro caso: nunca un 403 ni un mensaje
     # distinto, que sería un oráculo para enumerar reservas ajenas (11.1).
     row = db.execute(
-        select(Booking, AppointmentType.name)
+        select(Booking, AppointmentType)
         .join(AppointmentType, Booking.appointment_type_id == AppointmentType.id)
         .where(Booking.token == token)
     ).one_or_none()
     if row is None:
         raise ApiError(404, "booking_not_found", "No existe ninguna reserva con ese token.")
-    booking, appointment_type_name = row
+    booking, appointment_type = row
 
     # 2. Forma pública: sin el id interno ni el email, que ya conoce quien consulta.
     return BookingDetailOut(
@@ -101,7 +101,8 @@ def get_booking(token: str, db: Annotated[Session, Depends(get_db)]) -> BookingD
         starts_at=booking.starts_at,
         ends_at=booking.ends_at,
         customer_name=booking.customer_name,
-        appointment_type_name=appointment_type_name,
+        appointment_type=appointment_type.slug,
+        appointment_type_name=appointment_type.name,
     )
 
 
@@ -109,13 +110,13 @@ def get_booking(token: str, db: Annotated[Session, Depends(get_db)]) -> BookingD
 def cancel_booking(token: str, db: Annotated[Session, Depends(get_db)]) -> BookingDetailOut:
     # 1. Buscar la reserva por su token (mismo 404 uniforme que GET /bookings/{token}).
     row = db.execute(
-        select(Booking, AppointmentType.name)
+        select(Booking, AppointmentType)
         .join(AppointmentType, Booking.appointment_type_id == AppointmentType.id)
         .where(Booking.token == token)
     ).one_or_none()
     if row is None:
         raise ApiError(404, "booking_not_found", "No existe ninguna reserva con ese token.")
-    booking, appointment_type_name = row
+    booking, appointment_type = row
 
     # 2. Cambio de estado, no un borrado: la fila se conserva para los dashboards.
     # Idempotente a propósito -- cancelar algo ya cancelado devuelve 200 con el mismo
@@ -132,7 +133,8 @@ def cancel_booking(token: str, db: Annotated[Session, Depends(get_db)]) -> Booki
         starts_at=booking.starts_at,
         ends_at=booking.ends_at,
         customer_name=booking.customer_name,
-        appointment_type_name=appointment_type_name,
+        appointment_type=appointment_type.slug,
+        appointment_type_name=appointment_type.name,
     )
 
 
@@ -192,5 +194,6 @@ def reschedule_booking(
         starts_at=booking.starts_at,
         ends_at=booking.ends_at,
         customer_name=booking.customer_name,
+        appointment_type=appointment_type.slug,
         appointment_type_name=appointment_type.name,
     )

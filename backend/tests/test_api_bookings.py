@@ -178,6 +178,7 @@ class TestGetBooking:
             "starts_at": "2026-09-07T08:00:00Z",
             "ends_at": "2026-09-07T08:30:00Z",
             "customer_name": "Ada Lovelace",
+            "appointment_type": "reunion-inicial",
             "appointment_type_name": "Reunión inicial",
         }
 

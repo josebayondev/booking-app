@@ -52,7 +52,11 @@ class BookingDetailOut(BaseModel):
     """La vista completa de una reserva: la página a la que apunta el enlace del email
     (GET /bookings/{token}) y lo que devuelven cancelarla o reprogramarla. Sin
     customer_email -- quien tiene el token ya sabe su propio email, no hace falta
-    devolvérselo."""
+    devolvérselo.
+
+    Lleva tanto el slug (`appointment_type`) como el nombre (`appointment_type_name`): el
+    slug es lo que el frontend necesita para pedir `GET /availability` al reprogramar, el
+    nombre es lo que se pinta en la página."""
 
     token: str
     reference: str
@@ -60,6 +64,7 @@ class BookingDetailOut(BaseModel):
     starts_at: datetime
     ends_at: datetime
     customer_name: str
+    appointment_type: str
     appointment_type_name: str
 
 
