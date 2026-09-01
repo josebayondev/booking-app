@@ -1,6 +1,8 @@
-"""Ruta pública de creación de reservas: POST /api/v1/bookings.
+"""Rutas públicas del ciclo de vida de una reserva: crearla, consultarla, cancelarla y
+reprogramarla, todas bajo /api/v1/bookings.
 
-Sin autenticación, como el resto de app/api/availability.py.
+Sin autenticación, como el resto de app/api/availability.py -- el token opaco es la
+única llave.
 """
 
 from datetime import timedelta
@@ -16,7 +18,7 @@ from app.core.db import get_db
 from app.core.errors import ApiError
 from app.core.timezone import booking_timezone, utc_now, utc_to_local_date
 from app.models import AppointmentType, Booking
-from app.schemas.booking import BookingCreate, BookingOut
+from app.schemas.booking import BookingCreate, BookingDetailOut, BookingOut, BookingReschedule
 
 router = APIRouter(prefix="/api/v1")
 
@@ -72,3 +74,123 @@ def create_booking(
 
     response.headers["Location"] = f"/api/v1/bookings/{booking.token}"
     return booking
+
+
+# La página a la que apunta el enlace del email: GET /bookings/{token}, sin autenticación
+# -- el token opaco es la única llave (ver app/models/booking.py).
+@router.get("/bookings/{token}", response_model=BookingDetailOut)
+def get_booking(token: str, db: Annotated[Session, Depends(get_db)]) -> BookingDetailOut:
+    # 1. Buscar la reserva por su token, con el nombre de su tipo de cita en la misma
+    # consulta -- Booking no tiene relationship a AppointmentType, solo la FK. Un token
+    # desconocido da el mismo 404 que cualquier otro caso: nunca un 403 ni un mensaje
+    # distinto, que sería un oráculo para enumerar reservas ajenas (11.1).
+    row = db.execute(
+        select(Booking, AppointmentType.name)
+        .join(AppointmentType, Booking.appointment_type_id == AppointmentType.id)
+        .where(Booking.token == token)
+    ).one_or_none()
+    if row is None:
+        raise ApiError(404, "booking_not_found", "No existe ninguna reserva con ese token.")
+    booking, appointment_type_name = row
+
+    # 2. Forma pública: sin el id interno ni el email, que ya conoce quien consulta.
+    return BookingDetailOut(
+        token=booking.token,
+        reference=booking.reference,
+        status=booking.status,
+        starts_at=booking.starts_at,
+        ends_at=booking.ends_at,
+        customer_name=booking.customer_name,
+        appointment_type_name=appointment_type_name,
+    )
+
+
+@router.post("/bookings/{token}/cancel", response_model=BookingDetailOut)
+def cancel_booking(token: str, db: Annotated[Session, Depends(get_db)]) -> BookingDetailOut:
+    # 1. Buscar la reserva por su token (mismo 404 uniforme que GET /bookings/{token}).
+    row = db.execute(
+        select(Booking, AppointmentType.name)
+        .join(AppointmentType, Booking.appointment_type_id == AppointmentType.id)
+        .where(Booking.token == token)
+    ).one_or_none()
+    if row is None:
+        raise ApiError(404, "booking_not_found", "No existe ninguna reserva con ese token.")
+    booking, appointment_type_name = row
+
+    # 2. Cambio de estado, no un borrado: la fila se conserva para los dashboards.
+    # Idempotente a propósito -- cancelar algo ya cancelado devuelve 200 con el mismo
+    # estado, no un error. El hueco queda libre al instante porque el EXCLUDE de Booking
+    # excluye las canceladas (WHERE status <> 'cancelled'), no hace falta nada más aquí.
+    booking.status = "cancelled"
+    db.commit()
+    db.refresh(booking)
+
+    return BookingDetailOut(
+        token=booking.token,
+        reference=booking.reference,
+        status=booking.status,
+        starts_at=booking.starts_at,
+        ends_at=booking.ends_at,
+        customer_name=booking.customer_name,
+        appointment_type_name=appointment_type_name,
+    )
+
+
+@router.post("/bookings/{token}/reschedule", response_model=BookingDetailOut)
+def reschedule_booking(
+    token: str,
+    reschedule_in: BookingReschedule,
+    db: Annotated[Session, Depends(get_db)],
+) -> BookingDetailOut:
+    # 1. Buscar la reserva por su token, con su tipo de cita completo -- a diferencia de
+    # GET/cancel hace falta el objeto entero, no solo el nombre: fetch_free_slots (paso 2)
+    # y el cálculo de ends_at (paso 3) lo necesitan (mismo 404 uniforme que las otras
+    # dos rutas).
+    row = db.execute(
+        select(Booking, AppointmentType)
+        .join(AppointmentType, Booking.appointment_type_id == AppointmentType.id)
+        .where(Booking.token == token)
+    ).one_or_none()
+    if row is None:
+        raise ApiError(404, "booking_not_found", "No existe ninguna reserva con ese token.")
+    booking, appointment_type = row
+
+    # 2. Pre-check de UX: misma consulta que GET /availability y POST /bookings
+    # (fetch_free_slots), excluyendo esta reserva -- si no, su propio hueco actual
+    # siempre contaría como ocupado y reprogramar fallaría contra sí misma. La garantía
+    # real es el EXCLUDE de BD -- paso 3.
+    tz = booking_timezone()
+    local_day = utc_to_local_date(reschedule_in.starts_at, tz)
+    slots = fetch_free_slots(
+        db,
+        appointment_type,
+        local_day,
+        local_day,
+        tz,
+        utc_now(),
+        exclude_booking_id=booking.id,
+    )
+    if not any(slot.starts_at == reschedule_in.starts_at for slot in slots):
+        raise ApiError(409, "slot_unavailable", "Ese horario ya no está disponible.")
+
+    # 3. Mismo token, mismo `id`, solo cambia el horario -- el EXCLUDE de BD es lo que de
+    # verdad decide ante una reprogramación concurrente con otra reserva o reprogramación
+    # sobre el mismo hueco.
+    booking.starts_at = reschedule_in.starts_at
+    booking.ends_at = reschedule_in.starts_at + timedelta(minutes=appointment_type.duration_minutes)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise ApiError(409, "slot_unavailable", "Ese horario ya no está disponible.") from None
+    db.refresh(booking)
+
+    return BookingDetailOut(
+        token=booking.token,
+        reference=booking.reference,
+        status=booking.status,
+        starts_at=booking.starts_at,
+        ends_at=booking.ends_at,
+        customer_name=booking.customer_name,
+        appointment_type_name=appointment_type.name,
+    )

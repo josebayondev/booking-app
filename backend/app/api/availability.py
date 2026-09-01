@@ -72,14 +72,19 @@ def fetch_free_slots(
     window_end: date,
     tz: ZoneInfo,
     now: datetime,
+    exclude_booking_id: int | None = None,
 ) -> list[FreeSlot]:
     """Reúne reglas, excepciones y reservas de Postgres para `window_start..window_end`
     y llama a `compute_free_slots`.
 
-    Compartida entre `GET /availability` (un rango de días) y `POST /bookings` (un solo
-    día, para revalidar el instante propuesto): la consulta es idéntica, solo cambia la
-    ventana -- y así el pre-check de la reserva no puede divergir nunca de lo que la API
-    ofrece como libre.
+    Compartida entre `GET /availability` (un rango de días), `POST /bookings` (un solo
+    día, para revalidar el instante propuesto) y `POST /bookings/{token}/reschedule`: la
+    consulta es idéntica, solo cambia la ventana -- y así el pre-check de la reserva no
+    puede divergir nunca de lo que la API ofrece como libre.
+
+    `exclude_booking_id` solo lo usa reschedule: sin él, el hueco que la propia reserva
+    ya ocupa contaría como "no libre" y reprogramar al mismo horario (o a uno que se
+    solape con el actual) fallaría siempre contra sí misma.
     """
     if window_end < window_start:
         return []
@@ -100,18 +105,22 @@ def fetch_free_slots(
         )
     ).all()
 
+    conditions: list[ColumnExpressionArgument[bool]] = [
+        # El índice GiST es parcial sobre `status <> 'cancelled'`; Postgres deduce
+        # que `= 'confirmed'` lo implica y lo usa igual. Se filtra por el valor exacto
+        # y no por `<> 'cancelled'` porque es lo que significa de verdad "esta reserva
+        # ocupa el hueco", y seguiría siendo correcto si algún día apareciese un
+        # tercer estado.
+        Booking.status == "confirmed",
+        _overlaps(Booking.starts_at, Booking.ends_at, fetch_start, fetch_end),
+    ]
+    if exclude_booking_id is not None:
+        conditions.append(Booking.id != exclude_booking_id)
+
     booking_rows = db.execute(
         select(Booking.starts_at, Booking.ends_at, Booking.status, AppointmentType.buffer_minutes)
         .join(AppointmentType, Booking.appointment_type_id == AppointmentType.id)
-        .where(
-            # El índice GiST es parcial sobre `status <> 'cancelled'`; Postgres deduce
-            # que `= 'confirmed'` lo implica y lo usa igual. Se filtra por el valor exacto
-            # y no por `<> 'cancelled'` porque es lo que significa de verdad "esta reserva
-            # ocupa el hueco", y seguiría siendo correcto si algún día apareciese un
-            # tercer estado.
-            Booking.status == "confirmed",
-            _overlaps(Booking.starts_at, Booking.ends_at, fetch_start, fetch_end),
-        )
+        .where(*conditions)
     ).all()
     bookings = [
         BookingWithBuffer(
