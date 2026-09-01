@@ -50,7 +50,8 @@ lista que tiene `terminada` la esconde del tablero, que es justo lo que no se qu
 ## Correspondencia con el repositorio
 
 - Una subtarea → una rama `feature/<nombre>` (o `fix/`, `chore/`) salida de `main`.
-- Mensaje de commit en inglés, Conventional Commits, **una sola línea**.
+- Mensaje de commit en Conventional Commits, **una sola línea**: el prefijo (`feat:`,
+  `fix:`...) en inglés, la descripción en español (ver "Idioma" en `CLAUDE.md`).
 - Todo pasa por PR y solo squash merge. `main` está protegida.
 - El número de PR queda en el commit de `main` (`feat(api): ... (#34)`), que es lo que
   permite atar una subtarea de ClickUp a su commit sin llevar la cuenta a mano.
