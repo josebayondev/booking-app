@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.auth import router as auth_router
 from app.api.availability import router as availability_router
 from app.api.bookings import router as bookings_router
 from app.api.health import router as health_router
@@ -85,3 +86,4 @@ register_error_handlers(app)
 app.include_router(health_router)
 app.include_router(availability_router)
 app.include_router(bookings_router)
+app.include_router(auth_router)

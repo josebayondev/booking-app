@@ -47,6 +47,19 @@ class Settings(BaseSettings):
     # tráfico real, y ajustarlo no puede exigir un despliegue de código.
     rate_limit_requests: int = Field(default=60, ge=1)
     rate_limit_window_seconds: int = Field(default=60, ge=1)
+    # Login del panel de administración (FEAT 14): un único rol, identidad por variables de
+    # entorno -- igual que booking_timezone, un dueño no es una tabla. None significa "el
+    # panel no está configurado en este entorno"; el login falla siempre en ese caso, nunca
+    # con un mensaje distinto al de una contraseña incorrecta (mismo principio anti-oráculo
+    # que el 404 uniforme de get_booking).
+    admin_email: str | None = None
+    admin_password_hash: str | None = None
+    # Secreto de firma HS256. None con el mismo razonamiento de arriba -- require_role
+    # (app/core/auth.py) lo comprueba antes de intentar firmar o verificar nada.
+    jwt_secret: str | None = None
+    # 24 horas, sin refresh token: si expira, se inicia sesión a mano otra vez (decisión de
+    # producto, no una limitación técnica).
+    jwt_expires_minutes: int = Field(default=1440, ge=1)
 
     @field_validator("cors_origins", mode="before")
     @classmethod
