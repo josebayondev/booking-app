@@ -30,6 +30,7 @@ services:
       ENVIRONMENT: local
       CORS_ORIGINS: http://localhost:5173
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/booking_app
+      JWT_SECRET: dev-only-secret-change-me-please-32-bytes
     depends_on:
       postgres:
         condition: service_healthy
