@@ -46,6 +46,22 @@ export class ApiContractError extends Error {
   }
 }
 
+let authToken: string | null = null
+
+/**
+ * Fija (o borra, con `null`) el token Bearer de las próximas peticiones. Lo llama el store
+ * de sesión de admin (`features/auth/authStore.ts`) -- nunca al revés: `api/` no puede
+ * depender de `features/`, así que la dependencia va en un único sentido a través de este
+ * setter en vez de un import directo del store.
+ */
+export function setAuthToken(token: string | null): void {
+  authToken = token
+}
+
+function authHeaders(): Record<string, string> {
+  return authToken === null ? {} : { Authorization: `Bearer ${authToken}` }
+}
+
 /**
  * Se lee en cada petición y no una vez al importar el módulo: así un test puede montar el
  * entorno antes de llamar, sin pelearse con el orden de los imports.
@@ -124,7 +140,12 @@ export async function request<TSchema extends z.ZodType>(
     }
   }
 
-  return send(url, { headers: { Accept: 'application/json' } }, schema, path)
+  return send(
+    url,
+    { headers: { Accept: 'application/json', ...authHeaders() } },
+    schema,
+    path,
+  )
 }
 
 /**
@@ -146,6 +167,7 @@ export async function mutate<TSchema extends z.ZodType>(
       headers: {
         Accept: 'application/json',
         'Content-Type': 'application/json',
+        ...authHeaders(),
       },
       body: JSON.stringify(body),
     },
