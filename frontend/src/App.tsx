@@ -4,12 +4,14 @@ import { useEffect, useRef } from 'react'
 import { Route, Routes, useLocation } from 'react-router'
 
 import AdminDashboardPage from './pages/AdminDashboardPage.tsx'
+import AdminLayout from './pages/AdminLayout.tsx'
 import AdminLoginPage from './pages/AdminLoginPage.tsx'
 import AppointmentPage from './pages/AppointmentPage.tsx'
 import BookingPage from './pages/BookingPage.tsx'
 import LandingPage from './pages/LandingPage.tsx'
 import NotFoundPage from './pages/NotFoundPage.tsx'
 import Header from './components/Header.tsx'
+import RequireAdminSession from './features/auth/RequireAdminSession.tsx'
 
 export default function App() {
   const location = useLocation()
@@ -34,9 +36,13 @@ export default function App() {
     mainRef.current?.focus({ preventScroll: true })
   }, [location.pathname])
 
+  const isAdminRoute = location.pathname.startsWith('/admin')
+
   return (
     <div>
-      <Header />
+      {/* La nav del panel (AdminLayout) sustituye a esta cabecera pública dentro de
+          /admin -- no tiene sentido el CTA de "Reservar cita" sobre el panel. */}
+      {!isAdminRoute && <Header />}
 
       <main
         ref={mainRef}
@@ -52,7 +58,12 @@ export default function App() {
             <Route path="/reservar" element={<BookingPage />} />
             <Route path="/cita/:token" element={<AppointmentPage />} />
             <Route path="/admin/login" element={<AdminLoginPage />} />
-            <Route path="/admin" element={<AdminDashboardPage />} />
+            <Route path="/admin" element={<RequireAdminSession />}>
+              <Route element={<AdminLayout />}>
+                <Route index element={<AdminDashboardPage />} />
+                {/* FEAT 24 y 25 cuelgan aquí, con nav y guard ya compartidos. */}
+              </Route>
+            </Route>
             {/* El comodín va el último: sin él, una URL desconocida no pinta nada. */}
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
