@@ -76,3 +76,13 @@ def test_invalid_booking_timezone_fails_at_startup(monkeypatch: pytest.MonkeyPat
 
     with pytest.raises(ValidationError):
         IsolatedSettings()
+
+
+def test_admin_auth_defaults_to_unconfigured() -> None:
+    """Sin las cuatro variables, el panel tiene que fallar cerrado -- ver app/api/auth.py."""
+    settings = IsolatedSettings()
+
+    assert settings.admin_email is None
+    assert settings.admin_password_hash is None
+    assert settings.jwt_secret is None
+    assert settings.jwt_expires_minutes == 1440
