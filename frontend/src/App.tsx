@@ -10,7 +10,9 @@ import AppointmentPage from './pages/AppointmentPage.tsx'
 import BookingPage from './pages/BookingPage.tsx'
 import LandingPage from './pages/LandingPage.tsx'
 import NotFoundPage from './pages/NotFoundPage.tsx'
+import Footer from './components/Footer.tsx'
 import Header from './components/Header.tsx'
+import { site } from './content/site.ts'
 import RequireAdminSession from './features/auth/RequireAdminSession.tsx'
 
 export default function App() {
@@ -69,6 +71,10 @@ export default function App() {
           </Routes>
         </div>
       </main>
+
+      {/* Mismo criterio que la cabecera: el pie es cromo de las rutas públicas y no pinta
+          nada dentro del panel de administración. */}
+      {!isAdminRoute && <Footer content={site.footer} />}
     </div>
   )
 }
