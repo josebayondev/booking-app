@@ -246,6 +246,17 @@ tocan nunca datos reales y no aplican a Neon (staging/producción).
   componente por ruta, y su único trabajo es componer — tira de los hooks de `features/` y
   pinta con los de `components/`, sin lógica propia. Es la quinta capa y llegó después que
   las otras cuatro, porque hasta que no hubo rutas no había nada que colgar de ella.
+  `src/content/` es la sexta y llegó con el rediseño de la landing: el copy de las páginas
+  públicas, un fichero por página (`landing.ts`) más `site.ts` para el cromo que sale en
+  todas las rutas públicas. Solo dato serializable — ni lógica, ni JSX, ni imports de
+  `api/`; los iconos se nombran con una cadena y cada sección la resuelve a su componente.
+  Cambiar el mensaje de una página es editar un fichero, no buscar frases por el `src/`.
+  Y al revés: lo que viene del backend **no** se copia aquí, porque el dueño lo edita desde
+  el panel y una copia en el código se queda vieja sin que nadie se entere. Esa es la misma
+  razón por la que tampoco va en un store de Zustand.
+  Las secciones de una página pública viven en `src/components/sections/`, una por fichero:
+  son componentes de presentación como el resto de `components/`, así que reciben por props
+  tanto el copy como los datos que la página haya sacado de `features/`.
 - **Rutas**: `react-router` en modo declarativo. El `BrowserRouter` va en `main.tsx`, por
   dentro del `QueryClientProvider` — la caché de consultas es independiente de la ruta y
   tiene que sobrevivir a la navegación — y la tabla de rutas vive en `App.tsx`. Se eligió
