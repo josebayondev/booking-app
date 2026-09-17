@@ -62,6 +62,11 @@ export default function BookingForm({
         />
       </div>
 
+      <p className="text-xs text-stone-500">
+        Tu nombre y tu email se usan solo para gestionar esta cita y se eliminan
+        un tiempo después de que pase.
+      </p>
+
       {errorMessage !== null && (
         <p className="text-sm text-red-600">{errorMessage}</p>
       )}
