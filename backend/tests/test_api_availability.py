@@ -4,14 +4,36 @@ Usan api_client (tests/conftest.py), no client: el endpoint necesita ver dentro 
 misma transacción las filas que cada test prepara con db_session.
 """
 
-from datetime import UTC, date, datetime, time
+from datetime import date, datetime, time, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.api.availability import AVAILABILITY_CACHE_CONTROL
+from app.core.timezone import local_to_utc
 from app.models import AppointmentType, AvailabilityRule, Booking
+
+
+def _next_monday() -> date:
+    """Un lunes futuro y no una fecha fija: compute_free_slots descarta todo hueco
+    anterior a `now` (app/services/availability.py), así que una fecha fija se habría
+    ido quedando atrás según pasan los días -- que es justo lo que le pasó a esta
+    suite."""
+    today = date.today()
+    days_ahead = (7 - today.weekday()) % 7 or 7
+    return today + timedelta(days=days_ahead)
+
+
+def _as_iso(moment: datetime) -> str:
+    return moment.isoformat().replace("+00:00", "Z")
+
+
+_SLOT_DATE = _next_monday()
+_NEXT_DAY = _SLOT_DATE + timedelta(days=1)
+# Primer slot libre de _rule(): las 10:00 de Madrid, con el desfase que esté vigente ese
+# día (CET o CEST según la época del año).
+_FREE_SLOT_START = local_to_utc(_SLOT_DATE, time(10, 0))
 
 
 def _appointment_type(**overrides: object) -> AppointmentType:
@@ -30,7 +52,7 @@ def _appointment_type(**overrides: object) -> AppointmentType:
 
 def _rule(**overrides: object) -> AvailabilityRule:
     defaults: dict[str, object] = {
-        "weekday": date(2026, 9, 7).weekday(),  # lunes
+        "weekday": _SLOT_DATE.weekday(),  # lunes
         "starts_at_local": time(10, 0),
         "ends_at_local": time(14, 0),
         "is_active": True,
@@ -108,23 +130,26 @@ class TestAvailability:
     ) -> None:
         appointment_type = _appointment_type()
         db_session.add(appointment_type)
-        db_session.add(_rule())  # solo cubre el lunes 2026-09-07
+        db_session.add(_rule())  # solo cubre _SLOT_DATE (lunes)
         db_session.flush()
 
         response = api_client.get(
             "/api/v1/availability",
-            params={"type": "reunion-inicial", "from": "2026-09-07", "to": "2026-09-08"},
+            params={
+                "type": "reunion-inicial",
+                "from": _SLOT_DATE.isoformat(),
+                "to": _NEXT_DAY.isoformat(),
+            },
         )
 
         assert response.status_code == 200
         days = response.json()
-        assert [day["date"] for day in days] == ["2026-09-07", "2026-09-08"]
+        assert [day["date"] for day in days] == [_SLOT_DATE.isoformat(), _NEXT_DAY.isoformat()]
 
         monday, tuesday = days
         assert len(monday["slots"]) == 8  # 10:00-14:00 Madrid, treinta minutos cada slot
-        # 10:00 en Madrid es verano (CEST, UTC+2) -> 08:00Z.
-        assert monday["slots"][0]["starts_at"] == "2026-09-07T08:00:00Z"
-        # Martes no tiene regla -> día presente, con la lista vacía, no ausente.
+        assert monday["slots"][0]["starts_at"] == _as_iso(_FREE_SLOT_START)
+        # El día siguiente no tiene regla -> día presente, con la lista vacía, no ausente.
         assert tuesday["slots"] == []
 
     def test_excludes_a_confirmed_booking(
@@ -140,21 +165,25 @@ class TestAvailability:
                 appointment_type_id=appointment_type.id,
                 customer_name="Ada Lovelace",
                 customer_email="ada@example.com",
-                starts_at=datetime(2026, 9, 7, 8, 0, tzinfo=UTC),
-                ends_at=datetime(2026, 9, 7, 8, 30, tzinfo=UTC),
+                starts_at=_FREE_SLOT_START,
+                ends_at=_FREE_SLOT_START + timedelta(minutes=30),
             )
         )
         db_session.flush()
 
         response = api_client.get(
             "/api/v1/availability",
-            params={"type": "reunion-inicial", "from": "2026-09-07", "to": "2026-09-07"},
+            params={
+                "type": "reunion-inicial",
+                "from": _SLOT_DATE.isoformat(),
+                "to": _SLOT_DATE.isoformat(),
+            },
         )
 
         assert response.status_code == 200
         slots = response.json()[0]["slots"]
-        assert len(slots) == 7  # 08:30-12:00Z libres tras la reserva, treinta minutos cada slot
-        assert slots[0]["starts_at"] == "2026-09-07T08:30:00Z"
+        assert len(slots) == 7  # libres tras la reserva, treinta minutos cada slot
+        assert slots[0]["starts_at"] == _as_iso(_FREE_SLOT_START + timedelta(minutes=30))
 
     def test_a_cancelled_booking_frees_its_slot_again(
         self, db_session: Session, api_client: TestClient
@@ -171,8 +200,8 @@ class TestAvailability:
                 appointment_type_id=appointment_type.id,
                 customer_name="Ada Lovelace",
                 customer_email="ada@example.com",
-                starts_at=datetime(2026, 9, 7, 8, 0, tzinfo=UTC),
-                ends_at=datetime(2026, 9, 7, 8, 30, tzinfo=UTC),
+                starts_at=_FREE_SLOT_START,
+                ends_at=_FREE_SLOT_START + timedelta(minutes=30),
                 status="cancelled",
             )
         )
@@ -180,13 +209,17 @@ class TestAvailability:
 
         response = api_client.get(
             "/api/v1/availability",
-            params={"type": "reunion-inicial", "from": "2026-09-07", "to": "2026-09-07"},
+            params={
+                "type": "reunion-inicial",
+                "from": _SLOT_DATE.isoformat(),
+                "to": _SLOT_DATE.isoformat(),
+            },
         )
 
         assert response.status_code == 200
         slots = response.json()[0]["slots"]
         assert len(slots) == 8
-        assert slots[0]["starts_at"] == "2026-09-07T08:00:00Z"
+        assert slots[0]["starts_at"] == _as_iso(_FREE_SLOT_START)
 
     def test_a_booking_that_only_touches_the_window_edge_does_not_block_it(
         self, db_session: Session, api_client: TestClient
@@ -198,22 +231,27 @@ class TestAvailability:
         db_session.add(_rule())
         db_session.flush()
 
-        # 2026-09-07T00:00 en Madrid (CEST, UTC+2) es 2026-09-06T22:00Z, o sea justo el
-        # borde inferior de la ventana que consulta el endpoint.
+        # Medianoche local de _SLOT_DATE es justo el borde inferior de la ventana que
+        # consulta el endpoint (local_day_bounds, app/core/timezone.py).
+        day_start = local_to_utc(_SLOT_DATE, time.min)
         db_session.add(
             Booking(
                 appointment_type_id=appointment_type.id,
                 customer_name="Ada Lovelace",
                 customer_email="ada@example.com",
-                starts_at=datetime(2026, 9, 6, 21, 30, tzinfo=UTC),
-                ends_at=datetime(2026, 9, 6, 22, 0, tzinfo=UTC),
+                starts_at=day_start - timedelta(minutes=30),
+                ends_at=day_start,
             )
         )
         db_session.flush()
 
         response = api_client.get(
             "/api/v1/availability",
-            params={"type": "reunion-inicial", "from": "2026-09-07", "to": "2026-09-07"},
+            params={
+                "type": "reunion-inicial",
+                "from": _SLOT_DATE.isoformat(),
+                "to": _SLOT_DATE.isoformat(),
+            },
         )
 
         assert response.status_code == 200

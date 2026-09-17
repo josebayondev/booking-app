@@ -1,0 +1,71 @@
+# Aplica la política de retención de app/cleanup.py contra la base de datos de
+# producción: borra las reservas pasadas que ya cumplieron su plazo (ver
+# backend/app/cleanup.py para el porqué de RETENTION_DAYS).
+#
+# Es un cron y no un Pre-Deploy Command de Render por el mismo motivo que
+# migrate-production.yml: esa función es de pago, así que el trabajo de mantenimiento
+# corre aquí, en CI, en vez de en el arranque de la aplicación.
+name: Clean up past bookings
+
+on:
+  schedule:
+    # 03:00 UTC, hora valle tanto en Madrid como para quien use la reserva pública.
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Nunca dos borrados a la vez: un DELETE concurrente sobre el mismo corte no aporta nada
+# y solo compite por las mismas filas.
+concurrency:
+  group: cleanup-bookings
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: backend
+
+jobs:
+  cleanup:
+    name: python -m app.cleanup
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.12.5"
+          enable-cache: true
+          cache-dependency-glob: "backend/uv.lock"
+
+      # Sin --extra dev: app.cleanup no necesita ruff, mypy ni pytest para ejecutarse.
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      # Mismo motivo que en migrate-production.yml: un repositorio generado desde esta
+      # plantilla no tiene el secreto todavía, y el cron se dispara igual porque no
+      # depende de ningún push. Sin base de datos no hay nada que limpiar: decirlo y
+      # terminar en verde.
+      - name: Check for the production database secret
+        id: guard
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_PRODUCTION }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::notice::DATABASE_URL_PRODUCTION is not set, skipping cleanup."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Delete past bookings beyond the retention window
+        if: steps.guard.outputs.configured == 'true'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_PRODUCTION }}
+        run: uv run python -m app.cleanup

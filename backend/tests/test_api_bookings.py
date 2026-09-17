@@ -4,13 +4,24 @@ Usan api_client (tests/conftest.py), no client: el endpoint necesita ver dentro 
 misma transacción las filas que cada test prepara con db_session.
 """
 
-from datetime import UTC, date, datetime, time
+from datetime import UTC, date, datetime, time, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from app.core.timezone import local_to_utc
 from app.models import AppointmentType, AvailabilityRule, Booking
+
+
+def _next_monday() -> date:
+    """Un lunes futuro y no una fecha fija: compute_free_slots descarta todo hueco
+    anterior a `now` (app/services/availability.py), así que una fecha fija se habría
+    ido quedando atrás según pasan los días -- que es justo lo que le pasó a esta
+    suite."""
+    today = date.today()
+    days_ahead = (7 - today.weekday()) % 7 or 7
+    return today + timedelta(days=days_ahead)
 
 
 def _appointment_type(**overrides: object) -> AppointmentType:
@@ -29,7 +40,7 @@ def _appointment_type(**overrides: object) -> AppointmentType:
 
 def _rule(**overrides: object) -> AvailabilityRule:
     defaults: dict[str, object] = {
-        "weekday": date(2026, 9, 7).weekday(),  # lunes
+        "weekday": _SLOT_DATE.weekday(),  # lunes
         "starts_at_local": time(10, 0),
         "ends_at_local": time(14, 0),
         "is_active": True,
@@ -37,10 +48,18 @@ def _rule(**overrides: object) -> AvailabilityRule:
     return AvailabilityRule(**(defaults | overrides))
 
 
-# 10:00 en Madrid es verano (CEST, UTC+2) -> 08:00Z. Primer slot libre de _rule().
-_FREE_SLOT_STARTS_AT = "2026-09-07T08:00:00Z"
+def _as_iso(moment: datetime) -> str:
+    return moment.isoformat().replace("+00:00", "Z")
+
+
+_SLOT_DATE = _next_monday()
+# Primer slot libre de _rule(): las 10:00 de Madrid, con el desfase que esté vigente ese
+# día (CET o CEST según la época del año).
+_FREE_SLOT_START = local_to_utc(_SLOT_DATE, time(10, 0))
 # Otro slot libre del mismo día (10:30-11:00 Madrid), para reprogramar sin chocar.
-_OTHER_FREE_SLOT_STARTS_AT = "2026-09-07T08:30:00Z"
+_OTHER_FREE_SLOT_START = local_to_utc(_SLOT_DATE, time(10, 30))
+_FREE_SLOT_STARTS_AT = _as_iso(_FREE_SLOT_START)
+_OTHER_FREE_SLOT_STARTS_AT = _as_iso(_OTHER_FREE_SLOT_START)
 
 
 def _payload(**overrides: object) -> dict[str, object]:
@@ -58,8 +77,8 @@ def _booking(appointment_type_id: int, **overrides: object) -> Booking:
         "appointment_type_id": appointment_type_id,
         "customer_name": "Ada Lovelace",
         "customer_email": "ada@example.com",
-        "starts_at": datetime(2026, 9, 7, 8, 0, tzinfo=UTC),
-        "ends_at": datetime(2026, 9, 7, 8, 30, tzinfo=UTC),
+        "starts_at": _FREE_SLOT_START,
+        "ends_at": _FREE_SLOT_START + timedelta(minutes=30),
     }
     return Booking(**(defaults | overrides))
 
@@ -75,8 +94,8 @@ class TestCreateBooking:
 
         assert response.status_code == 201
         body = response.json()
-        assert body["starts_at"] == "2026-09-07T08:00:00Z"
-        assert body["ends_at"] == "2026-09-07T08:30:00Z"
+        assert body["starts_at"] == _FREE_SLOT_STARTS_AT
+        assert body["ends_at"] == _as_iso(_FREE_SLOT_START + timedelta(minutes=30))
         assert body["token"]
         assert body["reference"].startswith("BK-")
         assert response.headers["location"] == f"/api/v1/bookings/{body['token']}"
@@ -114,7 +133,8 @@ class TestCreateBooking:
 
         response = api_client.post(
             "/api/v1/bookings",
-            json=_payload(starts_at="2026-09-07T23:00:00Z"),  # fuera de 10:00-14:00 Madrid
+            # fuera de 10:00-14:00 Madrid
+            json=_payload(starts_at=_as_iso(datetime.combine(_SLOT_DATE, time(23, 0), tzinfo=UTC))),
         )
 
         assert response.status_code == 409
@@ -126,7 +146,7 @@ class TestCreateBooking:
         db_session.flush()
 
         response = api_client.post(
-            "/api/v1/bookings", json=_payload(starts_at="2026-09-07T08:00:00")
+            "/api/v1/bookings", json=_payload(starts_at=f"{_SLOT_DATE.isoformat()}T08:00:00")
         )
 
         assert response.status_code == 422
@@ -175,8 +195,8 @@ class TestGetBooking:
             "token": booking.token,
             "reference": booking.reference,
             "status": "confirmed",
-            "starts_at": "2026-09-07T08:00:00Z",
-            "ends_at": "2026-09-07T08:30:00Z",
+            "starts_at": _FREE_SLOT_STARTS_AT,
+            "ends_at": _as_iso(_FREE_SLOT_START + timedelta(minutes=30)),
             "customer_name": "Ada Lovelace",
             "appointment_type": "reunion-inicial",
             "appointment_type_name": "Reunión inicial",
@@ -274,8 +294,8 @@ class TestRescheduleBooking:
         assert response.status_code == 200
         body = response.json()
         assert body["token"] == token
-        assert body["starts_at"] == "2026-09-07T08:30:00Z"
-        assert body["ends_at"] == "2026-09-07T09:00:00Z"
+        assert body["starts_at"] == _OTHER_FREE_SLOT_STARTS_AT
+        assert body["ends_at"] == _as_iso(_OTHER_FREE_SLOT_START + timedelta(minutes=30))
 
     def test_rescheduling_to_the_same_slot_does_not_conflict_with_itself(
         self, db_session: Session, api_client: TestClient
@@ -325,8 +345,8 @@ class TestRescheduleBooking:
         booking = _booking(appointment_type.id)
         other = _booking(
             appointment_type.id,
-            starts_at=datetime(2026, 9, 7, 8, 30, tzinfo=UTC),
-            ends_at=datetime(2026, 9, 7, 9, 0, tzinfo=UTC),
+            starts_at=_OTHER_FREE_SLOT_START,
+            ends_at=_OTHER_FREE_SLOT_START + timedelta(minutes=30),
         )
         db_session.add_all([booking, other])
         db_session.flush()
